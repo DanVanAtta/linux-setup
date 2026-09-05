@@ -51,3 +51,8 @@ apply: galaxy
       --vault-password-file ansible/vault-pass.sh \
       --diff \
       ansible/system-setup.yml
+
+# Migrate hardcoded secrets from ~/.secret-tokens.env into the GNOME keyring, then drop
+# each migrated line from that file. The sole populate path; `apply` only reads the keyring.
+migrate-secrets:
+    python3 ansible/migrate-secrets.py

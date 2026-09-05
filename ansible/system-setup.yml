@@ -3,33 +3,15 @@
     user: "{{ ansible_facts['user_id'] }}"
     group: "{{ ansible_facts['user_id'] }}"
     user_home: "{{ ansible_facts['env']['HOME'] }}"
-    # min_len/max_len bound each token to catch a bad clipboard paste before it is
-    # stored: a short value means the paste was truncated, an overlong one means the
-    # wrong buffer landed. Maxes are deliberately generous (well above any known-valid
-    # length) so tokens can grow as providers change format without tripping the guard.
-    pat_token_keys:
-      - key: GITHUB_TOKEN
-        label: "GitHub Personal Access Token"
-        min_len: 30
-        max_len: 300
-      - key: INSTALL4J_LICENSE_KEY
-        label: "Install4J License Key"
-        min_len: 8
-        max_len: 200
-      - key: LINODE_TOKEN
-        label: "Linode API Key"
-        min_len: 40
-        max_len: 256
-      - key: TRIPLEA_ANSIBLE_VAULT_PASSWORD
-        label: "Vault password for TripleA"
-        min_len: 8
-        max_len: 200
-      - key: TF_TOKEN_app_terraform_io
-        label: "Terraform Cloud API Token"
-        min_len: 20
-        max_len: 300
   environment: "{{ pat_env | default({}) }}"
   pre_tasks:
+    # The set of secrets and their bounds live in pat_tokens.json, shared with the
+    # 'migrate-secrets.py' populate script so the list is defined in exactly one place.
+    - name: Load the PAT token key list
+      include_vars:
+        file: pat_tokens.json
+        name: pat_token_keys
+
     - name: Install libsecret-tools (for GNOME Keyring access)
       become: true
       apt:
@@ -38,85 +20,31 @@
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Check which PAT tokens are already in the keyring
-      command: secret-tool lookup service pat_tokens key {{ item.key }}
-      register: keyring_check
-      loop: "{{ pat_token_keys }}"
-      changed_when: false
-      failed_when: false
-      no_log: true
-
-    - name: Prompt for any missing PAT tokens
-      pause:
-        prompt: "Enter value for {{ item.item.label }} ({{ item.item.key }})"
-        echo: false
-      when: item.rc != 0
-      loop: "{{ keyring_check.results }}"
-      register: token_prompts
-      no_log: true
-
-    # Distil each entered value down to key + length + a whitespace flag, dropping the
-    # secret itself, so the validation task below can fail loudly with a useful message
-    # without no_log hiding it or the secret leaking into output.
-    - name: Summarize entered tokens for validation (no secret retained)
-      set_fact:
-        entered_token_checks: >-
-          {{ entered_token_checks | default([]) + [{
-            'key': item.item.item.key,
-            'len': item.user_input | length,
-            'min_len': item.item.item.min_len,
-            'max_len': item.item.item.max_len,
-            'has_ws': item.user_input | regex_search('\s') is not none
-          }] }}
-      when: item.user_input is defined and item.user_input != ""
-      loop: "{{ token_prompts.results }}"
-      no_log: true
-
-    # pause runs with echo:false, so a truncated or run-on Ubuntu/Wayland clipboard
-    # paste is invisible as it is entered; fail here on a length or whitespace mismatch
-    # so a mangled value never persists into the keyring. Operates on the sanitized
-    # summary — the message carries key + length only, never the secret.
-    - name: Reject truncated or run-on clipboard pastes before storing
-      assert:
-        that:
-          - item.len >= item.min_len
-          - item.len <= item.max_len
-          - not item.has_ws
-        fail_msg: "{{ item.key }}: entered length {{ item.len }} not in [{{ item.min_len }}, {{ item.max_len }}]{{ ' and contains whitespace' if item.has_ws else '' }} — likely a bad clipboard paste; nothing stored"
-        quiet: true
-      loop: "{{ entered_token_checks | default([]) }}"
-
-    - name: Store missing PAT tokens in GNOME Keyring
-      shell: |
-        printf '%s' {{ item.user_input | quote }} | \
-          secret-tool store --label={{ item.item.item.label | quote }} \
-            service pat_tokens key {{ item.item.item.key }}
-      when: item.user_input is defined and item.user_input != ""
-      loop: "{{ token_prompts.results }}"
-      no_log: true
-
+    # The playbook only ever reads the keyring — population is the job of
+    # 'just migrate-secrets'. A missing key is a hard stop, not a prompt, so a run never
+    # blocks on interactive input and the two responsibilities stay cleanly split.
     - name: Load all PAT tokens from keyring into Ansible facts
       command: secret-tool lookup service pat_tokens key {{ item.key }}
       register: pat_token_values
       loop: "{{ pat_token_keys }}"
       changed_when: false
+      failed_when: false
       no_log: true
+
+    - name: Fail fast if any PAT is missing from the keyring
+      assert:
+        that: item.rc == 0
+        fail_msg: "{{ item.item.key }} is not in the keyring — add it to ~/.secret-tokens.env and run 'just migrate-secrets'"
+        quiet: true
+      loop: "{{ pat_token_values.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
 
     - name: Build pat_env dict from keyring values
       set_fact:
         pat_env: "{{ pat_env | default({}) | combine({item.item.key: item.stdout | trim}) }}"
       loop: "{{ pat_token_values.results }}"
       no_log: true
-
-    # Lets the stored round-trip be eyeballed after a blind (echo:false) paste, without
-    # printing the secret — only its length and trailing 4 chars. loop_control.label is
-    # load-bearing here: without it the loop header would dump the full secret value.
-    - name: Confirm stored tokens (length + last 4 only, never the secret)
-      debug:
-        msg: "{{ item.item.key }}: len={{ (item.stdout | trim) | length }} …{{ (item.stdout | trim)[-4:] }}"
-      loop: "{{ pat_token_values.results }}"
-      loop_control:
-        label: "{{ item.item.key }}"
 
   roles:
     - docker
