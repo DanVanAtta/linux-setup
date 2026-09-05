@@ -2,7 +2,7 @@
 # Ansible vault password client: emits the vault password from the
 # MY_ANSIBLE_VAULT environment variable. ansible-playbook runs this (rather than
 # reading it as a plain file) because it is executable. Referenced by the
-# Makefile's --vault-password-file so `make diff`/`apply` decrypt vaulted vars
+# justfile's --vault-password-file so `just diff`/`apply` decrypt vaulted vars
 # without a password file on disk.
 set -euo pipefail
 
