@@ -1,0 +1,73 @@
+- name: Install CopyQ clipboard manager
+  become: true
+  when: not ansible_check_mode
+  apt:
+    state: present
+    name:
+      # CopyQ watches the Wayland clipboard through 'ext-data-control-v1', which Mutter
+      # exposes from GNOME 48 on — the reason an external manager can see copies at all
+      # under GNOME Wayland (it never implemented the older 'wlr-data-control').
+      - copyq
+      # wl-copy/wl-paste — scripting and a quick way to dump the current clipboard.
+      - wl-clipboard
+
+- name: Ensure CopyQ config directory exists
+  file:
+    path: "{{ user_home }}/.config/copyq"
+    state: directory
+    mode: "0755"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+
+# Two goals: announce every real copy (a popup on clipboard change) and keep the current
+# contents inspectable. Primary selection (select-to-copy / middle-click) is deliberately
+# left untracked — storing it fires a notification on every mouse selection. Flip
+# 'check_selection' to true to surface primary alongside the clipboard.
+- name: Configure CopyQ options
+  community.general.ini_file:
+    path: "{{ user_home }}/.config/copyq/copyq.conf"
+    section: Options
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    mode: "0644"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    no_extra_spaces: true
+  loop:
+    - {option: check_clipboard, value: "true"}
+    - {option: check_selection, value: "false"}
+    - {option: copy_clipboard, value: "false"}
+    - {option: copy_selection, value: "false"}
+    # Non-zero enables the on-copy notification; the count is how many lines of the new
+    # clipboard it previews — the "something landed on the clipboard" cue.
+    - {option: clipboard_notification_lines, value: "3"}
+
+- name: Autostart CopyQ at login
+  template:
+    src: copyq-autostart.desktop.j2
+    dest: "{{ user_home }}/.config/autostart/copyq.desktop"
+    mode: "0644"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+
+# Wayland forbids apps from grabbing global hotkeys, so the "show CopyQ" shortcut has to be a
+# GNOME custom keybinding rather than one set inside CopyQ. Super+V is GNOME's default
+# 'toggle-message-tray' (Super+M already covers that tray), so it is freed for CopyQ here.
+- name: Free Super+V from the GNOME message tray
+  community.general.dconf:
+    key: /org/gnome/shell/keybindings/toggle-message-tray
+    value: "['<Super>m']"
+
+- name: Bind Super+V to toggle the CopyQ window
+  community.general.dconf:
+    key: "{{ item.key }}"
+    value: "{{ item.value }}"
+  loop:
+    - key: /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings
+      value: "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/']"
+    - key: /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/name
+      value: "'CopyQ'"
+    - key: /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/command
+      value: "'copyq toggle'"
+    - key: /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/copyq/binding
+      value: "'<Super>v'"

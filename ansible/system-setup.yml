@@ -54,6 +54,7 @@
     - git/git_tools
     - git/scm_breeze
     - gnome
+    - clipboard
     - grub
     - intellij
     - {name: host_blocking, tags: host_blocking}
