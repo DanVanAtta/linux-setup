@@ -155,6 +155,19 @@
     # git reads the bot's own token from ~/.git-credentials (deployed below).
     - {name: credential.helper, value: store}
 
+- name: Let the bot run git in the human's shared repos (safe.directory)
+  # The ~/work checkout and its clones are owned by the human, but git here runs
+  # as the bot; git's ownership check then refuses every repo with "detected
+  # dubious ownership". Scope the exception to the shared work tree only — the
+  # trailing '/*' matches repos at any depth under it — rather than a blanket
+  # '*', so the bot is not told to trust repositories anywhere else on disk.
+  become: true
+  become_user: "{{ claude_user_name }}"
+  community.general.git_config:
+    scope: global
+    name: safe.directory
+    value: "{{ claude_user_work_dir }}/*"
+
 # --- Bot GitHub token (vaulted -> deployed to the bot's home) ----------------
 
 - name: Deploy the bot's GitHub token as an environment file
