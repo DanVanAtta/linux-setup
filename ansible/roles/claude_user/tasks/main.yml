@@ -87,6 +87,21 @@
     group: "{{ claude_user_name }}"
     force: true
 
+# --- Bot SSH directory -------------------------------------------------------
+
+- name: Ensure the bot's ~/.ssh exists with SSH-strict ownership and mode
+  # ssh refuses a private key unless its directory is owned by the bot and
+  # unreadable to group/other; 0700 + claude ownership satisfies that check.
+  # Only the directory is managed here — no key is deployed; keys are placed
+  # out of band.
+  become: true
+  ansible.builtin.file:
+    path: "{{ claude_user_home }}/.ssh"
+    state: directory
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0700"
+
 # --- Claude Code install for the bot ----------------------------------------
 
 - name: Ensure the bot's ~/.local/{bin,share} exist
