@@ -12,8 +12,8 @@ claude_user_work_dir: "{{ user_home }}/work"
 
 # The bot's own git identity — kept distinct so its commits are attributable to
 # the bot, not the human. The +ghbot address routes to a dedicated GitHub
-# account. No GPG signing or credential helpers: the bot has no access to those.
-claude_user_git_name: ghbot
+# account. No GPG signing: the bot has no access to the human's keys.
+claude_user_git_name: "DanVanAtta[Bot]"
 claude_user_git_email: "dhvatta+ghbot@gmail.com"
 
 # The bot keeps its own ~/.claude. Only durable config is seeded from the

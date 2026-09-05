@@ -22,6 +22,7 @@ diff: galaxy
 	  --inventory "localhost," \
 	  --connection local \
 	  --ask-become-pass \
+	  --vault-password-file ansible/vault-pass.sh \
 	  --check \
 	  --diff \
 	  ansible/system-setup.yml
@@ -31,6 +32,7 @@ apply: galaxy
 	  --inventory "localhost," \
 	  --connection local \
 	  --ask-become-pass \
+	  --vault-password-file ansible/vault-pass.sh \
 	  --diff \
 	  ansible/system-setup.yml
 

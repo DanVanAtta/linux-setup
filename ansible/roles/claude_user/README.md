@@ -30,14 +30,20 @@ than by an in-process sandbox it can disable itself.
   **not** re-seed, so the bot's config evolves independently.
 - **`~/work` symlink.** `/home/claude/work` links to the shared checkout so the
   bot's `$HOME/work` (used by hooks like worktree-create) resolves correctly.
+- **GitHub identity of its own.** The bot has a separate GitHub account
+  (`DanVanAtta[Bot]`), never the human's. Its API token is stored
+  ansible-vault-encrypted in `vars/main.yml` and deployed to the bot's home two
+  ways: `~/.pat_tokens` exports `GH_TOKEN`/`GITHUB_TOKEN` for `gh`, and
+  `~/.git-credentials` (with `credential.helper=store`) backs https `git`. Both
+  files are `0600` and owned by the bot. Rotate the token by re-encrypting it —
+  see the header of `vars/main.yml`.
 
 ## Deliberate tradeoffs
 
 - **First `bot` run prompts a fresh Claude login** — credentials are not copied,
   which is the point of a separate identity.
-- **`gh` / token-authenticated `git` stop working under the bot** by design: it
-  has no access to the primary user's keyring or PATs. Give the bot its own
-  GitHub account/token separately if it needs one.
+- **GitHub actions run as the bot, not the human** — its token is a different
+  account. The human's keyring and PATs stay unreachable.
 - **Any tool that reads `~/.ssh` breaks under the bot** — including a sanctioned
   read-only SSH log-fetch wrapper. Run those as the primary user, or grant the
   bot its own dedicated key outside `~/.ssh`.
