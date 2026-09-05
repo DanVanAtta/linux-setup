@@ -1,124 +1,96 @@
 #!/usr/bin/env python3
-"""Migrate hardcoded secrets out of a plaintext staging file into the GNOME keyring.
+"""Move hardcoded secrets in ~/.pat_tokens into the GNOME keyring.
 
-This is the sole populate path for the PATs that 'system-setup.yml' consumes; the
-playbook only ever reads the keyring. The workflow: drop 'KEY=value' lines into
-'~/.secret-tokens.env', run 'just migrate-secrets', and each value that validates and
-stores cleanly has its line removed from the file — so a live secret sits in plaintext
-only for the seconds between paste and run, and the file drains to empty.
+~/.pat_tokens is sourced by ~/.bashrc and, in steady state, holds only load
+lines — 'export VAR=$(secret-tool lookup service pat_tokens key VAR ...)' — so
+it carries no secret at rest. To add or rotate a secret, drop its value in
+hardcoded ('export VAR=thevalue') and run 'just migrate-secrets': the value is
+cleared from and re-stored in the keyring, then the line is rewritten back to
+its load form. Add and rotate are the same gesture, and the file returns to
+secret-free.
 
-Every token is bounded (min/max length + no internal whitespace) before it is stored:
-an Ubuntu/Wayland clipboard truncates or picks up the wrong buffer silently, and a
-mangled value in the keyring surfaces only as a confusing auth failure days later. The
-bounds and key list live in 'pat_tokens.json', shared with the playbook so the set of
-secrets is defined in one place.
+Ansible does not manage this file's contents — only that ~/.bashrc sources it.
+This script is the sole populate path; keep it standalone (stdlib + secret-tool).
 """
 
 from __future__ import annotations
 
-import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-# The staging file is plaintext on disk by design; keep it out of any repo and locked to
-# the owner. Path is fixed rather than configurable so there is exactly one place a live
-# secret can transit.
-STAGING_FILE = Path.home() / ".secret-tokens.env"
+TOKENS_FILE = Path.home() / ".pat_tokens"
 KEYRING_SERVICE = "pat_tokens"
-META_FILE = Path(__file__).parent / "pat_tokens.json"
+MAX_LEN = 4096
+
+EXPORT_RE = re.compile(r"^export\s+(\w+)=(.*)$")
+# Only names that read as a credential are eligible, so a bare-literal config
+# export (eg: a username) is never mistaken for a secret to be swallowed.
+SECRET_NAME_RE = re.compile(r"TOKEN|KEY|SECRET|PASSWORD|VAULT|LICENSE", re.IGNORECASE)
 
 
-class TokenSpec:
-    """One expected secret: its keyring key, human label, and accepted length bounds."""
-
-    def __init__(self, entry: dict) -> None:
-        self.key = entry["key"]
-        self.label = entry["label"]
-        self.min_len = entry["min_len"]
-        self.max_len = entry["max_len"]
+def strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
 
 
-def load_specs() -> dict[str, TokenSpec]:
-    specs = [TokenSpec(e) for e in json.loads(META_FILE.read_text())]
-    return {s.key: s for s in specs}
+def is_hardcoded_secret(var: str, rhs: str) -> bool:
+    """A line worth migrating: a credential-named var whose value is a literal.
 
-
-def parse_staging(path: Path) -> list[tuple[int, str, str]]:
-    """Return (line_index, key, value) for each 'KEY=value' assignment.
-
-    Surrounding whitespace on the value is stripped so a stray trailing space from an
-    editor is forgiven; internal whitespace is left intact for validation to reject,
-    since that is the fingerprint of a truncated multi-line paste. Blank lines, comments,
-    and empty assignments ('KEY=') are skipped, not migrated.
+    A '$' in the RHS means the value is loaded ('$(secret-tool ...)') or derived
+    from another var ('"$LINODE_TOKEN"'), so it is already keyring-backed and
+    left untouched.
     """
-    assignments = []
-    for idx, raw in enumerate(path.read_text().splitlines()):
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip()
-        if key and value:
-            assignments.append((idx, key, value))
-    return assignments
+    return SECRET_NAME_RE.search(var) is not None and "$" not in rhs
 
 
-def has_internal_whitespace(value: str) -> bool:
-    return any(c.isspace() for c in value)
-
-
-def validate(value: str, spec: TokenSpec) -> str | None:
-    """Return a redacted reason the value is unacceptable, or None if it passes.
-
-    The reason names length only, never the value, so it is safe to print.
-    """
-    if not (spec.min_len <= len(value) <= spec.max_len):
-        return f"length {len(value)} not in [{spec.min_len}, {spec.max_len}] — likely a truncated or run-on paste"
-    if has_internal_whitespace(value):
+def validate(value: str) -> str | None:
+    """Return a redacted reason the value is unusable, or None if it passes."""
+    if not value:
+        return "empty value"
+    if any(c.isspace() for c in value):
         return "contains whitespace — likely a truncated multi-line paste"
+    if len(value) > MAX_LEN:
+        return f"length {len(value)} exceeds {MAX_LEN} — likely a run-on paste"
     return None
 
 
-def store_and_verify(key: str, value: str, spec: TokenSpec) -> str | None:
-    """Store the value in the keyring and read it back; return a redacted error or None.
-
-    The read-back guards against a store that reported success but round-tripped a
-    different value; only on an exact match is the caller safe to drop the line.
-    """
+def store_and_verify(var: str, value: str) -> str | None:
+    """Clear any prior value, store the new one, read it back; redacted error or None."""
+    subprocess.run(["secret-tool", "clear", "service", KEYRING_SERVICE, "key", var],
+                   capture_output=True)
     store = subprocess.run(
-        ["secret-tool", "store", f"--label={spec.label}",
-         "service", KEYRING_SERVICE, "key", key],
-        input=value.encode(),
-        capture_output=True,
-    )
+        ["secret-tool", "store", f"--label={var}", "service", KEYRING_SERVICE, "key", var],
+        input=value.encode(), capture_output=True)
     if store.returncode != 0:
         return f"secret-tool store failed: {store.stderr.decode().strip()}"
-
     readback = subprocess.run(
-        ["secret-tool", "lookup", "service", KEYRING_SERVICE, "key", key],
-        capture_output=True,
-    )
+        ["secret-tool", "lookup", "service", KEYRING_SERVICE, "key", var],
+        capture_output=True)
     if readback.returncode != 0 or readback.stdout.decode() != value:
         return "read-back did not match what was stored"
     return None
 
 
-def rewrite_without(path: Path, drop_indices: set[int]) -> None:
-    """Rewrite the staging file minus the migrated lines, atomically, preserving 0600.
+def load_line(var: str) -> str:
+    return f"export {var}=$(secret-tool lookup service {KEYRING_SERVICE} key {var} 2>/dev/null)"
 
-    Comments and un-migrated (skipped or failed) lines are kept verbatim so the file
-    stays a faithful to-do list of what still needs migrating.
-    """
-    kept = [line for idx, line in enumerate(path.read_text().splitlines())
-            if idx not in drop_indices]
+
+def rewrite(path: Path, replacements: dict[int, str]) -> None:
+    """Rewrite the file atomically, swapping migrated lines for their load form,
+    preserving 0600 and every other line verbatim."""
+    lines = path.read_text().splitlines()
+    for idx, new in replacements.items():
+        lines[idx] = new
     fd, tmp = tempfile.mkstemp(dir=path.parent)
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
-            f.write("\n".join(kept) + ("\n" if kept else ""))
+            f.write("\n".join(lines) + "\n")
         os.replace(tmp, path)
     except BaseException:
         os.unlink(tmp)
@@ -127,44 +99,39 @@ def rewrite_without(path: Path, drop_indices: set[int]) -> None:
 
 def main() -> int:
     if subprocess.run(["which", "secret-tool"], capture_output=True).returncode != 0:
-        print("secret-tool not found — run 'just apply' (installs libsecret-tools) first.", file=sys.stderr)
+        print("secret-tool not found — install libsecret-tools first.", file=sys.stderr)
         return 1
-    if not STAGING_FILE.exists():
-        print(f"No staging file at {STAGING_FILE}.\n"
-              f"Create it with 0600 perms and one 'KEY=value' line per secret, then re-run.", file=sys.stderr)
+    if not TOKENS_FILE.exists():
+        print(f"No {TOKENS_FILE}.", file=sys.stderr)
         return 1
-
-    # A world/group-readable staging file defeats the point; refuse rather than migrate
-    # from a file other users can read.
-    mode = STAGING_FILE.stat().st_mode & 0o777
+    mode = TOKENS_FILE.stat().st_mode & 0o777
     if mode != 0o600:
-        print(f"{STAGING_FILE} is mode {oct(mode)}; run 'chmod 600 {STAGING_FILE}' and re-run.", file=sys.stderr)
+        print(f"{TOKENS_FILE} is mode {oct(mode)}; run 'chmod 600 {TOKENS_FILE}' and re-run.", file=sys.stderr)
         return 1
 
-    specs = load_specs()
-    migrated: set[int] = set()
+    replacements: dict[int, str] = {}
     failures = 0
-
-    for idx, key, value in parse_staging(STAGING_FILE):
-        spec = specs.get(key)
-        if spec is None:
-            print(f"  {key}: unknown key (not in pat_tokens.json) — skipped")
-            failures += 1
+    for idx, raw in enumerate(TOKENS_FILE.read_text().splitlines()):
+        m = EXPORT_RE.match(raw.strip())
+        if not m:
             continue
-        reason = validate(value, spec) or store_and_verify(key, value, spec)
+        var, rhs = m.group(1), m.group(2).strip()
+        if not is_hardcoded_secret(var, rhs):
+            continue
+        value = strip_quotes(rhs)
+        reason = validate(value) or store_and_verify(var, value)
         if reason:
-            print(f"  {key}: {reason} — nothing stored")
+            print(f"  {var}: {reason} — nothing stored")
             failures += 1
             continue
-        migrated.add(idx)
-        print(f"  {key}: stored len={len(value)} …{value[-4:]}")
+        replacements[idx] = load_line(var)
+        print(f"  {var}: stored len={len(value)} …{value[-4:]} → rewrote to load line")
 
-    if migrated:
-        rewrite_without(STAGING_FILE, migrated)
-        print(f"Migrated {len(migrated)} secret(s); their lines were removed from {STAGING_FILE.name}.")
+    if replacements:
+        rewrite(TOKENS_FILE, replacements)
+        print(f"Migrated {len(replacements)} secret(s) into the keyring.")
     else:
-        print("Nothing migrated.")
-
+        print("Nothing to migrate.")
     return 1 if failures else 0
 
 

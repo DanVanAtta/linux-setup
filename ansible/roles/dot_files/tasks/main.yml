@@ -1,7 +1,9 @@
 ---
-# Note: libsecret-tools install, keyring prompting/storing, and token loading
-# are handled in pre_tasks of system-setup.yml so tokens are available
-# as env vars (pat_env) to all roles. This role handles only file deployment.
+# Deploys static dotfiles and wires ~/.bashrc to source ~/.pat_tokens. The
+# content of ~/.pat_tokens is deliberately NOT managed here — 'just
+# migrate-secrets' owns it (moves hardcoded values into the keyring, leaving
+# 'export VAR=$(secret-tool lookup ...)' load lines). Ansible only guarantees
+# the file gets sourced.
 
 - name: Deploy dot files to home folder
   copy:
@@ -16,13 +18,6 @@
       dest: "{{ user_home }}/.vimrc"
     - src: bash_aliases
       dest: "{{ user_home }}/.bash_aliases"
-
-
-- name: Deploy .pat_tokens from template
-  template:
-    src: pat_tokens.j2
-    dest: "{{ user_home }}/.pat_tokens"
-    mode: "0600"
 
 - name: Ensure .bashrc sources .pat_tokens
   blockinfile:

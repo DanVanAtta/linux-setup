@@ -3,49 +3,6 @@
     user: "{{ ansible_facts['user_id'] }}"
     group: "{{ ansible_facts['user_id'] }}"
     user_home: "{{ ansible_facts['env']['HOME'] }}"
-  environment: "{{ pat_env | default({}) }}"
-  pre_tasks:
-    # The set of secrets and their bounds live in pat_tokens.json, shared with the
-    # 'migrate-secrets.py' populate script so the list is defined in exactly one place.
-    - name: Load the PAT token key list
-      include_vars:
-        file: pat_tokens.json
-        name: pat_token_keys
-
-    - name: Install libsecret-tools (for GNOME Keyring access)
-      become: true
-      apt:
-        name: libsecret-tools
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
-
-    # The playbook only ever reads the keyring — population is the job of
-    # 'just migrate-secrets'. A missing key is a hard stop, not a prompt, so a run never
-    # blocks on interactive input and the two responsibilities stay cleanly split.
-    - name: Load all PAT tokens from keyring into Ansible facts
-      command: secret-tool lookup service pat_tokens key {{ item.key }}
-      register: pat_token_values
-      loop: "{{ pat_token_keys }}"
-      changed_when: false
-      failed_when: false
-      no_log: true
-
-    - name: Fail fast if any PAT is missing from the keyring
-      assert:
-        that: item.rc == 0
-        fail_msg: "{{ item.item.key }} is not in the keyring — add it to ~/.secret-tokens.env and run 'just migrate-secrets'"
-        quiet: true
-      loop: "{{ pat_token_values.results }}"
-      loop_control:
-        label: "{{ item.item.key }}"
-
-    - name: Build pat_env dict from keyring values
-      set_fact:
-        pat_env: "{{ pat_env | default({}) | combine({item.item.key: item.stdout | trim}) }}"
-      loop: "{{ pat_token_values.results }}"
-      no_log: true
-
   roles:
     - docker
     - dot_files

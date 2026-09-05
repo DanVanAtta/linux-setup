@@ -1,7 +1,0 @@
-[
-  {"key": "GITHUB_TOKEN",                   "label": "GitHub Personal Access Token", "min_len": 30, "max_len": 300},
-  {"key": "INSTALL4J_LICENSE_KEY",          "label": "Install4J License Key",         "min_len": 8,  "max_len": 200},
-  {"key": "LINODE_TOKEN",                   "label": "Linode API Key",                "min_len": 40, "max_len": 256},
-  {"key": "TRIPLEA_ANSIBLE_VAULT_PASSWORD", "label": "Vault password for TripleA",    "min_len": 8,  "max_len": 200},
-  {"key": "TF_TOKEN_app_terraform_io",      "label": "Terraform Cloud API Token",     "min_len": 20, "max_len": 300}
-]
