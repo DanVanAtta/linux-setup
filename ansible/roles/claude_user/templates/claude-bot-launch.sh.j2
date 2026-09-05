@@ -18,6 +18,16 @@ if [ -f "$HOME/.pat_tokens" ]; then
   set +a
 fi
 
+# X clipboard access for paste. sudo's env_reset drops DISPLAY/XAUTHORITY, and
+# the bot's own uid cannot read the human's Xwayland cookie in its 0700 runtime
+# dir — so paste reads an empty clipboard. The autostart hook copies that cookie
+# to an ACL-readable file; point XAUTHORITY at it here. Skipped when the copy is
+# absent (no graphical login yet), leaving paste to fall back to ~/Screenshots.
+if [ -r "{{ claude_user_xauth_file }}" ]; then
+  export DISPLAY="{{ claude_user_display }}"
+  export XAUTHORITY="{{ claude_user_xauth_file }}"
+fi
+
 # sudo's secure_path leaves ~/.local/bin off PATH; the bot's own tools live
 # there. Idempotent so re-entrant shells don't stack duplicates.
 case ":$PATH:" in

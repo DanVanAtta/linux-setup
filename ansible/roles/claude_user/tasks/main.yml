@@ -311,3 +311,50 @@
       if [ -f ~/.config/claude-bot.sh ]; then
         source ~/.config/claude-bot.sh
       fi
+
+# --- Clipboard access for paste ---------------------------------------------
+# Paste into the bot's terminal reads the X clipboard via 'xsel'. Under the
+# isolated user that read fails (no Xwayland cookie) and Claude Code sees an
+# empty clipboard, so nothing pastes. These tasks hand the bot a copy of the
+# session cookie — a deliberate widening of the isolation model; see README.
+
+- name: Ensure xsel is available for clipboard reads
+  become: true
+  ansible.builtin.package:
+    name: xsel
+    state: present
+
+- name: Ensure the primary user's ~/.local/bin exists for the export hook
+  ansible.builtin.file:
+    path: "{{ claude_user_primary_home }}/.local/bin"
+    state: directory
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0755"
+
+- name: Deploy the Xauthority export hook
+  ansible.builtin.template:
+    src: claude-bot-xauth-export.sh.j2
+    dest: "{{ claude_user_primary_home }}/.local/bin/claude-bot-xauth-export"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0755"
+
+- name: Ensure the primary user's autostart dir exists
+  ansible.builtin.file:
+    path: "{{ claude_user_primary_home }}/.config/autostart"
+    state: directory
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0755"
+
+- name: Run the export hook at each graphical login
+  # A desktop autostart entry (not a systemd user unit) so it runs inside the
+  # graphical session where DISPLAY/XAUTHORITY are already set — the cookie path
+  # rotates per login, so a one-shot copy would go stale.
+  ansible.builtin.template:
+    src: claude-bot-xauth.desktop.j2
+    dest: "{{ claude_user_primary_home }}/.config/autostart/claude-bot-xauth.desktop"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0644"

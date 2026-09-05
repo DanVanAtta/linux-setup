@@ -1,0 +1,28 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Copies the graphical session's Xwayland auth cookie to a bot-readable file so
+# the isolated '{{ claude_user_name }}' user can read the X clipboard (via xsel)
+# — without it, paste into the bot's terminal reads an empty clipboard and
+# nothing lands. Runs as {{ claude_user_primary }} at each graphical login (the
+# cookie path rotates per session), launched by the autostart entry the
+# claude_user role deploys.
+#
+# The bot getting clipboard read is a deliberate widening of the isolation model
+# — see the role README's "Clipboard access" note.
+set -eu
+
+# In a graphical login XAUTHORITY points at the live Xwayland cookie; fall back
+# to the classic ~/.Xauthority for an Xorg session. No cookie to copy → exit
+# quietly (eg: a headless or pre-login run), leaving paste to degrade to the
+# ~/Screenshots path.
+src="${XAUTHORITY:-$HOME/.Xauthority}"
+dst="{{ claude_user_xauth_file }}"
+[ -r "$src" ] || exit 0
+
+# 0600 + a single named-user ACL: the copy is readable by its owner and the bot
+# and no one else. The bot reaches it by traversing the home root (its existing
+# ':x' ACL) and this per-file grant.
+install -m 0600 /dev/null "$dst"
+cp -f "$src" "$dst"
+chmod 0600 "$dst"
+setfacl -m u:{{ claude_user_name }}:r "$dst"

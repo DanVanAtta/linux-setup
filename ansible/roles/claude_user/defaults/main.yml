@@ -13,6 +13,14 @@ claude_user_work_dir: "{{ user_home }}/work"
 # writes here (unlike the read-write ~/work grant).
 claude_user_screenshots_dir: "{{ user_home }}/Screenshots"
 
+# Clipboard paste (see README "Clipboard access"): the bot's paste reads the X
+# clipboard via 'xsel', which needs the graphical session's Xwayland cookie. The
+# autostart hook copies that cookie here, ACL-readable by the bot, and the launch
+# wrapper points XAUTHORITY at it. Trades a slice of isolation — the bot can read
+# the live clipboard — for working paste; keep them together.
+claude_user_display: ":0"
+claude_user_xauth_file: "{{ user_home }}/.claude-bot-xauth"
+
 # The bot's own git identity — kept distinct so its commits are attributable to
 # the bot, not the human. The +ghbot address routes to a dedicated GitHub
 # account. No GPG signing: the bot has no access to the human's keys.

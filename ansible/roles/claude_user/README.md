@@ -46,6 +46,15 @@ than by an in-process sandbox it can disable itself.
   onboarding and a Claude login of its own.
 - **`~/work` symlink.** `/home/claude/work` links to the shared checkout so the
   bot's `$HOME/work` (used by hooks like worktree-create) resolves correctly.
+- **Clipboard access (paste).** Paste into the bot's terminal reads the X
+  clipboard via `xsel`; under the isolated user that read fails (no Xwayland
+  cookie in the human's `0700` runtime dir), Claude Code sees an empty clipboard,
+  and nothing pastes — text included. To restore paste, a login autostart hook
+  (`claude-bot-xauth-export`) copies the session's Xwayland cookie to
+  `~/.claude-bot-xauth` (`0600` + a `u:claude:r` ACL), and the launch wrapper
+  points `XAUTHORITY` there. The cookie path rotates per login, so the copy runs
+  each graphical login rather than once. **This is a deliberate widening of the
+  isolation model** — see the tradeoff below.
 - **GitHub identity of its own.** The bot has a separate GitHub account
   (`DanVanAtta[Bot]`), never the human's. Its API token is stored
   ansible-vault-encrypted in `vars/main.yml` and deployed to the bot's home two
@@ -63,6 +72,13 @@ than by an in-process sandbox it can disable itself.
 - **Any tool that reads `~/.ssh` breaks under the bot** — including a sanctioned
   read-only SSH log-fetch wrapper. Run those as the primary user, or grant the
   bot its own dedicated key outside `~/.ssh`.
+- **Clipboard paste hands the bot X-clipboard read.** Enabling paste means the
+  bot holds the session's Xwayland cookie, so it can read the clipboard at will —
+  not only when you paste. On Wayland this is scoped to the clipboard and any
+  legacy X11 clients (native Wayland windows are shielded by the compositor from
+  X screengrab/keylog), but a copied password or token is readable while the
+  grant stands. Remove the autostart entry and `~/.claude-bot-xauth` to revoke;
+  paste then falls back to the read-only `~/Screenshots` path.
 - The initial recursive ACL pass over `~/work` is a one-time, somewhat slow
   walk; subsequent runs skip it (gated on the default ACL already being set).
 

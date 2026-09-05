@@ -1,0 +1,11 @@
+[Desktop Entry]
+# {{ ansible_managed }}
+# Autostart hook: refreshes the bot-readable Xwayland cookie at each graphical
+# login so the isolated '{{ claude_user_name }}' user can read the clipboard for
+# paste. Runs inside the session where DISPLAY/XAUTHORITY are set. See the
+# claude_user role and claude-bot-xauth-export.sh.
+Type=Application
+Name=Claude bot clipboard access (Xauthority export)
+Exec={{ claude_user_primary_home }}/.local/bin/claude-bot-xauth-export
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
