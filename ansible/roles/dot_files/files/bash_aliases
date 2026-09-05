@@ -13,3 +13,7 @@ alias .6="cd ../../../../../../"
 alias x="exit"
 alias sl="ls"
 alias gamen="git commit --amend"
+
+# macOS clipboard muscle memory on Wayland (wl-clipboard)
+alias pbcopy="wl-copy"
+alias pbpaste="wl-paste"
