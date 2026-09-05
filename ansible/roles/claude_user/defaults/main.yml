@@ -15,18 +15,3 @@ claude_user_work_dir: "{{ user_home }}/work"
 # account. No GPG signing: the bot has no access to the human's keys.
 claude_user_git_name: "DanVanAtta[Bot]"
 claude_user_git_email: "dhvatta+ghbot@gmail.com"
-
-# The bot keeps its own ~/.claude. Only durable config is seeded from the
-# primary user's on first provision; machine/session state (sessions/,
-# session-env/, file-history/, caches, daemon, credentials) is intentionally
-# left behind so the bot logs in fresh and evolves its config independently.
-claude_user_src_config: "{{ user_home }}/.claude"
-claude_user_dest_config: "{{ claude_user_home }}/.claude"
-claude_user_durable_items:
-  - settings.json
-  - skills
-  - hooks
-  - plugins
-  - statusline-command.sh
-  - claude-skills.txt
-  - projects

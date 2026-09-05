@@ -21,13 +21,9 @@ than by an in-process sandbox it can disable itself.
   `claude`/`bot` aliases live in a sourced fragment
   (`~/.config/claude-bot.sh`), so the drifted hand-edited `.bashrc` need not be
   reconciled — sourced last, the fragment wins over any stale inline alias.
-- **Config migration (one-time).** On first provision the durable subset of the
-  primary user's `~/.claude` (`settings.json`, `skills/`, `hooks/`, `plugins/`,
-  `statusline-command.sh`, `claude-skills.txt`, `projects/` — which carries the
-  bot's memory) is copied into `/home/claude/.claude`; machine/session state and
-  credentials are left behind. Config paths in `settings.json` are repointed
-  from the old home, preserving `~/work` references. Re-running the role does
-  **not** re-seed, so the bot's config evolves independently.
+- **Own config.** The bot keeps its own `/home/claude/.claude`, independent of
+  the human's. A fresh provision starts it empty — the first `bot` run does
+  onboarding and a Claude login of its own.
 - **`~/work` symlink.** `/home/claude/work` links to the shared checkout so the
   bot's `$HOME/work` (used by hooks like worktree-create) resolves correctly.
 - **GitHub identity of its own.** The bot has a separate GitHub account

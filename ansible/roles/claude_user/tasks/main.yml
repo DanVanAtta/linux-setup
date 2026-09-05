@@ -125,37 +125,6 @@
     group: "{{ claude_user_name }}"
     force: true
 
-# --- One-time config migration ----------------------------------------------
-
-- name: Check whether the bot config has already been seeded
-  become: true
-  ansible.builtin.stat:
-    path: "{{ claude_user_dest_config }}/settings.json"
-  register: claude_user_config_seeded
-
-- name: Seed the bot's ~/.claude from the primary user's durable config (one-time)
-  become: true
-  when: not ansible_check_mode and not claude_user_config_seeded.stat.exists
-  ansible.builtin.shell: |
-    set -euo pipefail
-    mkdir -p {{ claude_user_dest_config | quote }}
-    for item in {{ claude_user_durable_items | join(' ') }}; do
-      src={{ claude_user_src_config | quote }}/"$item"
-      [ -e "$src" ] && cp -a "$src" {{ claude_user_dest_config | quote }}/ || true
-    done
-    chown -R {{ claude_user_name }}:{{ claude_user_name }} {{ claude_user_dest_config | quote }}
-  changed_when: true
-
-- name: Repoint migrated config paths at the bot's home (leaving ~/work refs)
-  # settings.json references the config dir absolutely (hooks, statusline). Only
-  # the .claude path moves; {{ claude_user_work_dir }} references must stay as-is.
-  become: true
-  when: not ansible_check_mode and not claude_user_config_seeded.stat.exists
-  ansible.builtin.replace:
-    path: "{{ claude_user_dest_config }}/settings.json"
-    regexp: "{{ claude_user_src_config | regex_escape }}"
-    replace: "{{ claude_user_dest_config }}"
-
 # --- Bot git identity --------------------------------------------------------
 
 - name: Set the bot's own git identity and credential store
