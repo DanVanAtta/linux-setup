@@ -35,13 +35,28 @@
     - "{{ claude_user_work_dir }}"
 
 - name: Grant the bot traverse-only access into the primary home
-  # -x lets the bot cd through {{ claude_user_primary_home }} to reach ~/work; it
-  # still cannot list or read the home itself, so ~/.ssh and friends stay opaque.
+  # -x lets the bot cd through {{ claude_user_primary_home }} to reach ~/work. It
+  # cannot list the home, but traverse alone still lets it read any world-readable
+  # file there by exact path — the home's 0750 mode does not protect them. The
+  # next task strips that exposure.
   become: true
   when: not ansible_check_mode and ('user:' + claude_user_name + ':') not in (claude_user_acls.results[0].stdout | default(''))
   ansible.builtin.command:
     cmd: "setfacl -m u:{{ claude_user_name }}:x {{ claude_user_primary_home }}"
   changed_when: true
+
+- name: Strip world access from the primary home so traverse exposes nothing
+  # Remove all "other" access from every top-level entry except ~/work (the one
+  # thing the bot is meant to reach), so no secret sitting in the home — dotfiles
+  # with exported tokens, key files, dumps — is readable through the traverse
+  # grant above. Runs as root so it also covers root-owned entries.
+  become: true
+  when: not ansible_check_mode
+  ansible.builtin.shell: >-
+    find {{ claude_user_primary_home }} -mindepth 1 -maxdepth 1
+    ! -name {{ claude_user_work_dir | basename }}
+    \( -type f -o -type d \) -exec chmod o-rwx {} +
+  changed_when: false
 
 - name: Grant the bot (and keep the primary user) rwX on ~/work, recursively
   become: true

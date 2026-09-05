@@ -12,9 +12,17 @@ than by an in-process sandbox it can disable itself.
   primary user's home.
 - **Opt-in access via POSIX ACLs.** The bot gets a traverse-only (`--x`) ACL on
   the primary home — enough to `cd` through it — and recursive `rwX` on
-  `~/work` only. Everything else (`~/.ssh`, `~/.aws`, `~/.gnupg`, the GNOME
-  keyring, ...) is unreachable by default. Default ACLs on `~/work` keep new
-  files editable in both directions without a shared group or setgid.
+  `~/work` only. Default ACLs on `~/work` keep new files editable in both
+  directions without a shared group or setgid.
+- **Home lockdown (the trap in traverse).** Traverse alone is *not* enough
+  isolation: a `--x` grant lets the bot read any **world-readable** file in the
+  home by exact path (the home's `0750` mode gates listing, not per-file read).
+  So the role also strips all "other" access from every top-level entry in the
+  primary home except `~/work`. Without this, dotfiles that export tokens
+  (`~/.bashrc`), key/credential files, and dumps sitting in the home are
+  readable by the bot even though it can't `ls` the directory. Subdirs like
+  `~/.ssh`/`~/.aws`/`~/.gnupg` were already `700`, but many home files default
+  to `644`/`664` — those are the exposure this closes.
 - **Launch path.** A sudoers drop-in lets the primary user run the bot binary
   as `claude` with `NOPASSWD`. `sudo`'s `env_reset` drops the primary user's
   exported secrets (eg: PAT tokens); only `TERM`/`COLORTERM` are kept. The
