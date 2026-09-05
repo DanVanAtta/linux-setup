@@ -23,12 +23,22 @@ than by an in-process sandbox it can disable itself.
   readable by the bot even though it can't `ls` the directory. Subdirs like
   `~/.ssh`/`~/.aws`/`~/.gnupg` were already `700`, but many home files default
   to `644`/`664` — those are the exposure this closes.
-- **Launch path.** A sudoers drop-in lets the primary user run the bot binary
-  as `claude` with `NOPASSWD`. `sudo`'s `env_reset` drops the primary user's
+- **Launch path.** A sudoers drop-in lets the primary user run the bot as
+  `claude` with `NOPASSWD`. `sudo`'s `env_reset` drops the primary user's
   exported secrets (eg: PAT tokens); only `TERM`/`COLORTERM` are kept. The
   `claude`/`bot` aliases live in a sourced fragment
   (`~/.config/claude-bot.sh`), so the drifted hand-edited `.bashrc` need not be
   reconciled — sourced last, the fragment wins over any stale inline alias.
+- **Where the bot's own env loads (headless).** The permitted sudo command is a
+  wrapper (`~/.local/bin/claude-bot`), not the binary directly. This matters
+  because the bot is headless: every command it runs is a non-interactive
+  `bash -c`, which reads no startup file — not `.bashrc` (its interactive guard
+  returns first) and not `.profile` (login shells only). `BASH_ENV` is the usual
+  headless hook, but `sudo` strips it. So the wrapper is the load point: running
+  as `claude`, it sources `~/.pat_tokens` and fixes `PATH`, then execs the real
+  launcher; every child the bot spawns inherits that env. It is a separate path
+  from `.local/bin/claude` (the auto-updated launcher symlink) so a bot
+  self-update can't overwrite it.
 - **Own config.** The bot keeps its own `/home/claude/.claude`, independent of
   the human's. A fresh provision starts it empty — the first `bot` run does
   onboarding and a Claude login of its own.

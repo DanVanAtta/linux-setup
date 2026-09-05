@@ -2,6 +2,8 @@
 # Let {{ claude_user_primary }} launch the Claude Code bot as the isolated
 # '{{ claude_user_name }}' user with no password prompt. env_reset (sudo default)
 # still drops {{ claude_user_primary }}'s exported secrets; only the terminal
-# vars are kept so the bot's TUI renders correctly.
+# vars are kept so the bot's TUI renders correctly. The permitted command is the
+# claude-bot wrapper, not a shell — it loads the bot's own env and execs the
+# real launcher, so the tight single-command allowlist holds.
 Defaults:{{ claude_user_primary }} env_keep += "TERM COLORTERM"
-{{ claude_user_primary }} ALL=({{ claude_user_name }}) NOPASSWD: {{ claude_user_home }}/.local/bin/claude
+{{ claude_user_primary }} ALL=({{ claude_user_name }}) NOPASSWD: {{ claude_user_home }}/.local/bin/claude-bot

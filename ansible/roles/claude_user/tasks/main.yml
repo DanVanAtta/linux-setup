@@ -155,6 +155,19 @@
     group: "{{ claude_user_name }}"
     force: true
 
+- name: Deploy the bot's launch wrapper that loads env sudo's reset drops
+  # sudo runs this (not the binary) so the bot's own env — GH tokens, PATH — is
+  # loaded at the launch point every child shell inherits; a headless bot's
+  # shells read no dotfile. A distinct path from the '.local/bin/claude' launcher
+  # above so a bot self-update can't clobber it. See claude-bot-launch.sh.j2.
+  become: true
+  ansible.builtin.template:
+    src: claude-bot-launch.sh.j2
+    dest: "{{ claude_user_home }}/.local/bin/claude-bot"
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0755"
+
 # --- Bot git identity --------------------------------------------------------
 
 - name: Set the bot's own git identity and credential store

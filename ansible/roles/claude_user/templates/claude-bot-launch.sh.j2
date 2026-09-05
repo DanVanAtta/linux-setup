@@ -1,0 +1,29 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Launch wrapper for the headless Claude Code bot. sudo runs this (see the
+# claude-bot sudoers rule) with a reset environment, and every command the bot
+# then issues is a non-interactive `bash -c` — which sources neither '.bashrc'
+# (its interactive guard returns first) nor '.profile' (read only by login
+# shells). So there is no dotfile a headless bot's shells read: the bot's own
+# environment is loaded HERE, the one launch point every child process
+# inherits. Kept as a separate path from the auto-updated
+# '{{ claude_user_home }}/.local/bin/claude' launcher symlink so a bot
+# self-update cannot clobber it.
+
+# Tokens for `gh` (GH_TOKEN/GITHUB_TOKEN); already exported in the file, the
+# set -a is belt-and-suspenders for future unexported entries.
+if [ -f "$HOME/.pat_tokens" ]; then
+  set -a
+  . "$HOME/.pat_tokens"
+  set +a
+fi
+
+# sudo's secure_path leaves ~/.local/bin off PATH; the bot's own tools live
+# there. Idempotent so re-entrant shells don't stack duplicates.
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) PATH="$HOME/.local/bin:$PATH" ;;
+esac
+export PATH
+
+exec "$HOME/.local/bin/claude" "$@"
