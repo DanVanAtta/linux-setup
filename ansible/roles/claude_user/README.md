@@ -73,6 +73,19 @@ than by an in-process sandbox it can disable itself.
   `~/.git-credentials` (with `credential.helper=store`) backs https `git`. Both
   files are `0600` and owned by the bot. Rotate the token by re-encrypting it —
   see the header of `vars/main.yml`.
+- **Signs its own commits (SSH signing).** The bot signs every commit with a
+  dedicated no-passphrase SSH key under its `~/.ssh`
+  (`git-signing-ed25519`), with git set to `gpg.format=ssh` +
+  `commit.gpgsign=true`, so its commits show **Verified** on GitHub against the
+  bot account. SSH signing over GPG deliberately — no gpg-agent or keyring to
+  wire into a headless, non-interactive process. The key is generated out of band
+  and only its public half is uploaded (as a GitHub *signing* key, not an auth
+  key) — the same "no second secret in the repo" call as the read-only SSH key,
+  so signing is config only and `make apply` does not create the key. Every
+  signing task is gated on the private key being present, so an apply run before
+  the key is placed can't turn on `commit.gpgsign` and leave the bot unable to
+  commit. The bot PAT deliberately lacks the scope to upload its own signing key,
+  keeping the token from managing account-level keys.
 
 ## Deliberate tradeoffs
 

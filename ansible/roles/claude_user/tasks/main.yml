@@ -229,6 +229,59 @@
     name: safe.directory
     value: "{{ claude_user_work_dir }}/*"
 
+# --- Bot commit signing (SSH) ------------------------------------------------
+# The bot signs its commits with its own SSH key so GitHub shows them Verified
+# against the bot account. The key lives out of band under the bot's ~/.ssh (the
+# same "no second secret in the repo" call as the read-only SSH key), so this is
+# config only — a bare `make apply` does not create it. Every task here is gated
+# on the private key being present: an apply run before the key is placed must
+# not set commit.gpgsign, which would make every bot commit fail with no key to
+# sign with. SSH signing (not GPG) to avoid a gpg-agent/keyring in a headless,
+# non-interactive process.
+
+- name: Check whether the bot's SSH signing key is present
+  become: true
+  become_user: "{{ claude_user_name }}"
+  ansible.builtin.stat:
+    path: "{{ claude_user_git_signing_key }}"
+  register: claude_user_signing_key
+
+- name: Turn on SSH commit signing once the key is present
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: claude_user_signing_key.stat.exists | default(false)
+  community.general.git_config:
+    scope: global
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  loop:
+    - {name: gpg.format, value: ssh}
+    - {name: user.signingkey, value: "{{ claude_user_git_signing_key }}.pub"}
+    - {name: commit.gpgsign, value: "true"}
+    - {name: gpg.ssh.allowedSignersFile, value: "{{ claude_user_home }}/.ssh/allowed_signers"}
+
+- name: Read the signing public key for the allowed-signers file
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: claude_user_signing_key.stat.exists | default(false)
+  ansible.builtin.slurp:
+    src: "{{ claude_user_git_signing_key }}.pub"
+  register: claude_user_signing_pubkey
+
+- name: Deploy the allowed-signers file so the bot can verify its own signatures
+  # Feeds only local `git log --show-signature`; GitHub's Verified badge does not
+  # use it. Binds the bot's committer email to its signing key (keytype + key
+  # only, dropping the .pub comment field the allowed_signers format rejects).
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: claude_user_signing_key.stat.exists | default(false)
+  ansible.builtin.copy:
+    dest: "{{ claude_user_home }}/.ssh/allowed_signers"
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0644"
+    content: "{{ claude_user_git_email }} {{ (claude_user_signing_pubkey.content | b64decode).split(' ')[:2] | join(' ') }}\n"
+
 # --- Bot GitHub token (vaulted -> deployed to the bot's home) ----------------
 
 - name: Deploy the bot's GitHub token as an environment file

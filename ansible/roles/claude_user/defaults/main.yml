@@ -33,6 +33,14 @@ claude_user_subid_count: 65536
 
 # The bot's own git identity — kept distinct so its commits are attributable to
 # the bot, not the human. The +ghbot address routes to a dedicated GitHub
-# account. No GPG signing: the bot has no access to the human's keys.
+# account. The bot signs its commits with its own SSH key (never the human's) so
+# GitHub marks them Verified; see claude_user_git_signing_key.
 claude_user_git_name: "DanVanAtta[Bot]"
 claude_user_git_email: "dhvatta+ghbot@gmail.com"
+
+# The bot's SSH commit-signing key: a no-passphrase ed25519 key (headless signing
+# can't prompt) under the bot's ~/.ssh, placed out of band like the read-only SSH
+# key — no second secret in the repo — so signing is config only and the key is
+# not created by `make apply`. The value is the private key path; the '.pub'
+# beside it is what git signs with and what's uploaded to GitHub as a signing key.
+claude_user_git_signing_key: "{{ claude_user_home }}/.ssh/git-signing-ed25519"
