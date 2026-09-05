@@ -1,0 +1,32 @@
+---
+# The isolated, low-privilege user the Claude Code bot runs as.
+claude_user_name: claude
+claude_user_home: "/home/{{ claude_user_name }}"
+claude_user_model: claude-opus-4-8
+
+# The primary (human) user whose files the bot is granted narrow access to.
+# Defaults to whoever runs the playbook (set in system-setup.yml).
+claude_user_primary: "{{ user }}"
+claude_user_primary_home: "{{ user_home }}"
+claude_user_work_dir: "{{ user_home }}/work"
+
+# The bot's own git identity — kept distinct so its commits are attributable to
+# the bot, not the human. The +ghbot address routes to a dedicated GitHub
+# account. No GPG signing or credential helpers: the bot has no access to those.
+claude_user_git_name: ghbot
+claude_user_git_email: "dhvatta+ghbot@gmail.com"
+
+# The bot keeps its own ~/.claude. Only durable config is seeded from the
+# primary user's on first provision; machine/session state (sessions/,
+# session-env/, file-history/, caches, daemon, credentials) is intentionally
+# left behind so the bot logs in fresh and evolves its config independently.
+claude_user_src_config: "{{ user_home }}/.claude"
+claude_user_dest_config: "{{ claude_user_home }}/.claude"
+claude_user_durable_items:
+  - settings.json
+  - skills
+  - hooks
+  - plugins
+  - statusline-command.sh
+  - claude-skills.txt
+  - projects

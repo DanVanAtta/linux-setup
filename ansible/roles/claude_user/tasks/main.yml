@@ -1,0 +1,210 @@
+---
+# Runs the Claude Code bot under a dedicated, low-privilege '{{ claude_user_name }}'
+# Unix user. Access to the primary user's files is a strict opt-in allowlist via
+# POSIX ACLs (only ~/work), so a bot running --dangerously-skip-permissions can
+# never read ~/.ssh or any other secret it was not explicitly granted. The kernel
+# enforces this — unlike the in-process sandbox, the bot cannot relax it. See
+# README.md for the full model and its known tradeoffs.
+
+- name: Ensure setfacl is available for ACL-based access control
+  become: true
+  ansible.builtin.package:
+    name: acl
+    state: present
+
+- name: Create the isolated bot user (own home, no sudo, no direct login)
+  become: true
+  ansible.builtin.user:
+    name: "{{ claude_user_name }}"
+    home: "{{ claude_user_home }}"
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+
+# --- Opt-in file access via POSIX ACLs --------------------------------------
+
+- name: Read current ACLs on the shared paths
+  become: true
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: "getfacl -pc {{ item }}"
+  changed_when: false
+  register: claude_user_acls
+  loop:
+    - "{{ claude_user_primary_home }}"
+    - "{{ claude_user_work_dir }}"
+
+- name: Grant the bot traverse-only access into the primary home
+  # -x lets the bot cd through {{ claude_user_primary_home }} to reach ~/work; it
+  # still cannot list or read the home itself, so ~/.ssh and friends stay opaque.
+  become: true
+  when: not ansible_check_mode and ('user:' + claude_user_name + ':') not in (claude_user_acls.results[0].stdout | default(''))
+  ansible.builtin.command:
+    cmd: "setfacl -m u:{{ claude_user_name }}:x {{ claude_user_primary_home }}"
+  changed_when: true
+
+- name: Grant the bot (and keep the primary user) rwX on ~/work, recursively
+  become: true
+  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[1].stdout | default(''))
+  ansible.builtin.command:
+    cmd: "setfacl -R -m u:{{ claude_user_name }}:rwX,u:{{ claude_user_primary }}:rwX {{ claude_user_work_dir }}"
+  changed_when: true
+
+- name: Set default ACLs so new files under ~/work inherit that shared access
+  # Keeps files editable both directions: bot-created files stay writable by the
+  # primary user, and vice versa, without a shared group or setgid churn.
+  become: true
+  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[1].stdout | default(''))
+  ansible.builtin.command:
+    cmd: "setfacl -R -d -m u:{{ claude_user_name }}:rwX,u:{{ claude_user_primary }}:rwX {{ claude_user_work_dir }}"
+  changed_when: true
+
+- name: Give the bot a ~/work that resolves to the shared checkout
+  # The bot's HOME is {{ claude_user_home }}, but the shared tree lives under the
+  # primary home; hooks and tools expand $HOME/work, so this symlink makes
+  # ~/work resolve correctly for the bot (eg: the worktree-create hook).
+  become: true
+  ansible.builtin.file:
+    src: "{{ claude_user_work_dir }}"
+    dest: "{{ claude_user_home }}/work"
+    state: link
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    force: true
+
+# --- Claude Code install for the bot ----------------------------------------
+
+- name: Ensure the bot's ~/.local/{bin,share} exist
+  become: true
+  ansible.builtin.file:
+    path: "{{ claude_user_home }}/.local/{{ item }}"
+    state: directory
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0755"
+  loop:
+    - bin
+    - share
+
+- name: Copy the bot's Claude versions from the primary user's install
+  # Copying the already-working native install is offline and version-exact;
+  # the bot's own auto-updater takes over from here into ~/.local/share/claude.
+  become: true
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: "cp -a {{ claude_user_primary_home }}/.local/share/claude {{ claude_user_home }}/.local/share/"
+    creates: "{{ claude_user_home }}/.local/share/claude/versions"
+
+- name: Give the bot ownership of its copied Claude versions
+  become: true
+  when: not ansible_check_mode
+  ansible.builtin.file:
+    path: "{{ claude_user_home }}/.local/share/claude"
+    state: directory
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    recurse: true
+
+- name: Read the primary user's claude launcher target
+  become: true
+  ansible.builtin.stat:
+    path: "{{ claude_user_primary_home }}/.local/bin/claude"
+  register: claude_user_launcher
+
+- name: Point the bot's claude launcher at its own copied version
+  # The primary launcher is an absolute symlink into the primary home; copying
+  # it verbatim would send the bot back into that home (and its ACL-blocked
+  # install). Recreate it against the bot's own copy instead.
+  become: true
+  when: claude_user_launcher.stat.islnk | default(false)
+  ansible.builtin.file:
+    src: "{{ claude_user_launcher.stat.lnk_target | replace(claude_user_primary_home, claude_user_home) }}"
+    dest: "{{ claude_user_home }}/.local/bin/claude"
+    state: link
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    force: true
+
+# --- One-time config migration ----------------------------------------------
+
+- name: Check whether the bot config has already been seeded
+  become: true
+  ansible.builtin.stat:
+    path: "{{ claude_user_dest_config }}/settings.json"
+  register: claude_user_config_seeded
+
+- name: Seed the bot's ~/.claude from the primary user's durable config (one-time)
+  become: true
+  when: not ansible_check_mode and not claude_user_config_seeded.stat.exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    mkdir -p {{ claude_user_dest_config | quote }}
+    for item in {{ claude_user_durable_items | join(' ') }}; do
+      src={{ claude_user_src_config | quote }}/"$item"
+      [ -e "$src" ] && cp -a "$src" {{ claude_user_dest_config | quote }}/ || true
+    done
+    chown -R {{ claude_user_name }}:{{ claude_user_name }} {{ claude_user_dest_config | quote }}
+  changed_when: true
+
+- name: Repoint migrated config paths at the bot's home (leaving ~/work refs)
+  # settings.json references the config dir absolutely (hooks, statusline). Only
+  # the .claude path moves; {{ claude_user_work_dir }} references must stay as-is.
+  become: true
+  when: not ansible_check_mode and not claude_user_config_seeded.stat.exists
+  ansible.builtin.replace:
+    path: "{{ claude_user_dest_config }}/settings.json"
+    regexp: "{{ claude_user_src_config | regex_escape }}"
+    replace: "{{ claude_user_dest_config }}"
+
+# --- Bot git identity --------------------------------------------------------
+
+- name: Set the bot's own git identity
+  become: true
+  become_user: "{{ claude_user_name }}"
+  community.general.git_config:
+    scope: global
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  loop:
+    - {name: user.name, value: "{{ claude_user_git_name }}"}
+    - {name: user.email, value: "{{ claude_user_git_email }}"}
+
+# --- Launch path: sudoers + shell aliases -----------------------------------
+
+- name: Allow the primary user to launch the bot as '{{ claude_user_name }}'
+  become: true
+  ansible.builtin.template:
+    src: claude-bot-sudoers.j2
+    dest: /etc/sudoers.d/claude-bot
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: Ensure the primary user's ~/.config exists
+  ansible.builtin.file:
+    path: "{{ claude_user_primary_home }}/.config"
+    state: directory
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0755"
+
+- name: Deploy the claude-bot shell alias fragment
+  ansible.builtin.template:
+    src: claude_bot.sh.j2
+    dest: "{{ claude_user_primary_home }}/.config/claude-bot.sh"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+    mode: "0644"
+
+- name: Source the claude-bot fragment from .bashrc
+  # A sourced fragment keeps the aliases under management without reconciling
+  # the hand-edited (drifted) .bashrc; sourced last, it overrides any stale
+  # inline 'claude'/'bot' aliases still in the file.
+  ansible.builtin.blockinfile:
+    path: "{{ claude_user_primary_home }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - claude-bot"
+    block: |
+      if [ -f ~/.config/claude-bot.sh ]; then
+        source ~/.config/claude-bot.sh
+      fi

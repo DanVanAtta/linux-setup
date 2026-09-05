@@ -75,3 +75,4 @@
     - intellij
     - {name: host_blocking, tags: host_blocking}
     - linux
+    - {name: claude_user, tags: claude_user}

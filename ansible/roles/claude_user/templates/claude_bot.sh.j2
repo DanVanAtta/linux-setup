@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+# Launch Claude Code under the isolated '{{ claude_user_name }}' user (claude_user
+# role) so a --dangerously-skip-permissions bot reaches only what it is granted
+# — notably not ~/.ssh. sudo's env_reset drops the primary user's exported
+# secrets (eg: PAT tokens); the sudoers rule keeps only TERM/COLORTERM so the
+# TUI still renders. -H sets HOME to the bot's own home.
+alias claude='sudo -u {{ claude_user_name }} -H {{ claude_user_home }}/.local/bin/claude --dangerously-skip-permissions --model {{ claude_user_model }}'
+alias bot='cd {{ claude_user_work_dir }} && claude'
