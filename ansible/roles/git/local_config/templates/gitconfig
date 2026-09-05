@@ -4,6 +4,8 @@
         path = {{ git_gpg_key_config }}
 [include]
         path = {{ git_github_credential_config }}
+[blame]
+	ignoreRevsFile = .git-blame-ignore-revs
 [branch]
         sort =  -committerdate
 [column]
