@@ -11,9 +11,11 @@ than by an in-process sandbox it can disable itself.
   `/home/claude` and its own `~/.claude` config. Nothing of the bot's is in the
   primary user's home.
 - **Opt-in access via POSIX ACLs.** The bot gets a traverse-only (`--x`) ACL on
-  the primary home — enough to `cd` through it — and recursive `rwX` on
-  `~/work` only. Default ACLs on `~/work` keep new files editable in both
-  directions without a shared group or setgid.
+  the primary home — enough to `cd` through it — recursive `rwX` on `~/work`,
+  and recursive read-only `rX` on `~/Screenshots` (so it can read pasted or
+  referenced screenshots but never write there). Default ACLs on each keep new
+  files inheriting that access — editable both directions under `~/work`,
+  bot-readable under `~/Screenshots` — without a shared group or setgid.
 - **Home lockdown (the trap in traverse).** Traverse alone is *not* enough
   isolation: a `--x` grant lets the bot read any **world-readable** file in the
   home by exact path (the home's `0750` mode gates listing, not per-file read).

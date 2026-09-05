@@ -1,8 +1,9 @@
 ---
 # Runs the Claude Code bot under a dedicated, low-privilege '{{ claude_user_name }}'
 # Unix user. Access to the primary user's files is a strict opt-in allowlist via
-# POSIX ACLs (only ~/work), so a bot running --dangerously-skip-permissions can
-# never read ~/.ssh or any other secret it was not explicitly granted. The kernel
+# POSIX ACLs (read-write ~/work, read-only ~/Screenshots), so a bot running
+# --dangerously-skip-permissions can never read ~/.ssh or any other secret it
+# was not explicitly granted. The kernel
 # enforces this — unlike the in-process sandbox, the bot cannot relax it. See
 # README.md for the full model and its known tradeoffs.
 
@@ -23,6 +24,18 @@
 
 # --- Opt-in file access via POSIX ACLs --------------------------------------
 
+- name: Ensure the screenshots dir exists so the read-only grant has a target
+  # The bot reads pasted/referenced screenshots from here. Created if absent (a
+  # fresh machine may not have taken one yet) so the ACL tasks below never fail
+  # on a missing path; owned by the human, never the bot.
+  become: true
+  ansible.builtin.file:
+    path: "{{ claude_user_screenshots_dir }}"
+    state: directory
+    owner: "{{ claude_user_primary }}"
+    group: "{{ claude_user_primary }}"
+    mode: "0750"
+
 - name: Read current ACLs on the shared paths
   become: true
   when: not ansible_check_mode
@@ -33,6 +46,7 @@
   loop:
     - "{{ claude_user_primary_home }}"
     - "{{ claude_user_work_dir }}"
+    - "{{ claude_user_screenshots_dir }}"
 
 - name: Grant the bot traverse-only access into the primary home
   # -x lets the bot cd through {{ claude_user_primary_home }} to reach ~/work. It
@@ -72,6 +86,25 @@
   when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[1].stdout | default(''))
   ansible.builtin.command:
     cmd: "setfacl -R -d -m u:{{ claude_user_name }}:rwX,u:{{ claude_user_primary }}:rwX {{ claude_user_work_dir }}"
+  changed_when: true
+
+- name: Grant the bot read-only access to ~/Screenshots, recursively
+  # Read-only (rX), unlike the rwX on ~/work: the bot reads screenshots the human
+  # pastes or references but never writes here. X adds traverse on the dir (and
+  # any subdirs) without making plain image files executable.
+  become: true
+  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[2].stdout | default(''))
+  ansible.builtin.command:
+    cmd: "setfacl -R -m u:{{ claude_user_name }}:rX {{ claude_user_screenshots_dir }}"
+  changed_when: true
+
+- name: Set default ACLs so new screenshots inherit the bot's read access
+  # A new screenshot dropped in later is readable by the bot without a re-run;
+  # the default entry applies to files created after this point.
+  become: true
+  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[2].stdout | default(''))
+  ansible.builtin.command:
+    cmd: "setfacl -R -d -m u:{{ claude_user_name }}:rX {{ claude_user_screenshots_dir }}"
   changed_when: true
 
 - name: Give the bot a ~/work that resolves to the shared checkout
