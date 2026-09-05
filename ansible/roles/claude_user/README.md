@@ -55,6 +55,17 @@ than by an in-process sandbox it can disable itself.
   points `XAUTHORITY` there. The cookie path rotates per login, so the copy runs
   each graphical login rather than once. **This is a deliberate widening of the
   isolation model** — see the tradeoff below.
+- **Container builds (rootless Podman).** The bot builds and runs containers
+  with Podman *rootless* — inside its own user namespace — so a container escape
+  or a `-v /:/host` mount only ever yields the `claude` user's privileges, the
+  same boundary already in force. The bot is **never** in the `docker` group: the
+  docker socket is root-equivalent (`docker run -v /:/host` = root on the host),
+  and that would dissolve every ACL protection above. The role installs Podman,
+  reserves the bot a subordinate uid/gid range (container `root` → an unprivileged
+  host uid), enables systemd linger for a persistent `XDG_RUNTIME_DIR`, and drops
+  a `docker`→`podman` shim in the bot's `~/.local/bin` so scripts calling `docker`
+  just work. Rootless adds no new authority — the bot could already run arbitrary
+  code as `claude`; this only lets it do so in containers within that same box.
 - **GitHub identity of its own.** The bot has a separate GitHub account
   (`DanVanAtta[Bot]`), never the human's. Its API token is stored
   ansible-vault-encrypted in `vars/main.yml` and deployed to the bot's home two
@@ -81,6 +92,11 @@ than by an in-process sandbox it can disable itself.
   paste then falls back to the read-only `~/Screenshots` path.
 - The initial recursive ACL pass over `~/work` is a one-time, somewhat slow
   walk; subsequent runs skip it (gated on the default ACL already being set).
+- **Rootless Podman can't do `--privileged`, docker-in-docker, or raw device
+  access** — those need real root, and giving them to an isolated user has no safe
+  form; a build that genuinely requires them is where this boundary stops. Bind
+  mounts also see container-`root`-written files as an unprivileged mapped uid, so
+  a container writing into `~/work` leaves files owned by a subuid, not `claude`.
 
 ## Usage
 

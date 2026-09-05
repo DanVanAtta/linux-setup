@@ -21,6 +21,16 @@ claude_user_screenshots_dir: "{{ user_home }}/Screenshots"
 claude_user_display: ":0"
 claude_user_xauth_file: "{{ user_home }}/.claude-bot-xauth"
 
+# Rootless container engine (see README "Container builds"): the bot builds and
+# runs containers with Podman inside its own user namespace, so a breakout is
+# only ever the low-privilege 'claude' user, never host root. The human's rootful
+# Docker (the 'docker' role) is deliberately withheld — docker-group / socket
+# access is root-equivalent and would dissolve this whole boundary. These map the
+# container uid/gid space onto a subordinate range the bot owns; container 'root'
+# becomes {{ claude_user_subid_start }}.
+claude_user_subid_start: 165536
+claude_user_subid_count: 65536
+
 # The bot's own git identity — kept distinct so its commits are attributable to
 # the bot, not the human. The +ghbot address routes to a dedicated GitHub
 # account. No GPG signing: the bot has no access to the human's keys.

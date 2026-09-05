@@ -358,3 +358,65 @@
     owner: "{{ user }}"
     group: "{{ group }}"
     mode: "0644"
+
+# --- Rootless container engine (Podman) -------------------------------------
+# The bot builds and runs containers rootless — inside its own user namespace —
+# so a container escape or a `-v /:/host` mount only ever yields the 'claude'
+# user's own privileges, the boundary already in force. The bot is never added
+# to the 'docker' group: the docker socket is root-equivalent and would let it
+# read/write the whole host, defeating the ACL isolation above. See README.
+
+- name: Install Podman and its rootless dependencies
+  become: true
+  ansible.builtin.package:
+    name:
+      - podman
+      - uidmap          # newuidmap/newgidmap — set up the user-namespace mapping
+      - fuse-overlayfs  # rootless overlay storage driver
+      - slirp4netns     # rootless container networking
+    state: present
+
+- name: Reserve a subordinate uid/gid range for the bot's user namespace
+  # Rootless Podman remaps container uids onto this range, so container 'root' is
+  # {{ claude_user_subid_start }}, not host root. Managed explicitly rather than
+  # left to useradd defaults so a fresh provision is reproducible; the '^claude:'
+  # regexp corrects the range in place instead of appending a duplicate line.
+  become: true
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    regexp: "^{{ claude_user_name }}:"
+    line: "{{ claude_user_name }}:{{ claude_user_subid_start }}:{{ claude_user_subid_count }}"
+  loop:
+    - /etc/subuid
+    - /etc/subgid
+
+- name: Enable systemd linger so the bot has a persistent runtime dir
+  # Rootless Podman needs an XDG_RUNTIME_DIR. The headless bot has no login
+  # session, so /run/user/<uid> would not otherwise exist; linger makes systemd
+  # create and keep it, and the launch wrapper points XDG_RUNTIME_DIR there.
+  # Without it Podman falls back to a /tmp runtime dir and hits storage-lock
+  # churn across the bot's one-process-per-command shells.
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ claude_user_name }}"
+    creates: "/var/lib/systemd/linger/{{ claude_user_name }}"
+
+- name: Give the bot a 'docker' command that maps to rootless Podman
+  # The host's real 'docker' (docker-ce-cli, for the human's rootful engine) owns
+  # /usr/bin/docker, so the system-wide podman-docker shim cannot be installed
+  # without a file conflict. Drop the shim in the bot's own ~/.local/bin instead —
+  # the launch wrapper prepends that to PATH — so build scripts calling 'docker'
+  # reach Podman, and only for the bot; the human's docker is untouched.
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ claude_user_home }}/.local/bin/docker"
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      exec podman "$@"

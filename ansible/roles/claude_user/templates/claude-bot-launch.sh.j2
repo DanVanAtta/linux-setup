@@ -28,8 +28,16 @@ if [ -r "{{ claude_user_xauth_file }}" ]; then
   export XAUTHORITY="{{ claude_user_xauth_file }}"
 fi
 
+# Rootless Podman needs a runtime dir. Linger (see the claude_user role) keeps a
+# persistent /run/user/<uid> for the bot with no login session; point
+# XDG_RUNTIME_DIR at it when present so Podman uses it over a churny /tmp fallback.
+if [ -d "/run/user/$(id -u)" ]; then
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+
 # sudo's secure_path leaves ~/.local/bin off PATH; the bot's own tools live
-# there. Idempotent so re-entrant shells don't stack duplicates.
+# there — including the 'docker' -> podman shim. Idempotent so re-entrant shells
+# don't stack duplicates.
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) PATH="$HOME/.local/bin:$PATH" ;;
