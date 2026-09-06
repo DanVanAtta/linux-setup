@@ -22,6 +22,23 @@
     create_home: true
     password_lock: true
 
+# --- Resource limits (anti-runaway) -----------------------------------------
+# Bound what a runaway or wedged bot can consume so it cannot DoS the human's
+# own session — a fork storm or fd leak is capped at the 'claude' user, leaving
+# the rest of the machine headroom. Applied via pam_limits, which sudo's PAM
+# session stack honours, so `sudo -u {{ claude_user_name }}` launches inherit it.
+# Not a syscall sandbox; see README "Hardening knobs deliberately not set" for
+# what is (and isn't) enforced and why.
+
+- name: Bound the bot user's resource limits (nproc, nofile)
+  become: true
+  ansible.builtin.template:
+    src: claude-limits.conf.j2
+    dest: /etc/security/limits.d/claude.conf
+    owner: root
+    group: root
+    mode: "0644"
+
 # --- Opt-in file access via POSIX ACLs --------------------------------------
 
 - name: Ensure the screenshots dir exists so the read-only grant has a target

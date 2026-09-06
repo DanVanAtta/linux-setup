@@ -44,4 +44,13 @@ case ":$PATH:" in
 esac
 export PATH
 
+# Deliberately NOT wrapped in `setpriv --no-new-privs` or a seccomp filter.
+# Both were tested and rejected (see README "Hardening knobs deliberately not
+# set"): no_new_privs neuters SUID binaries, and rootless Podman's cold-start
+# mapping runs the SUID 'newuidmap'/'newgidmap' — under nnp those fail with
+# "write to uid_map failed: Operation not permitted", so the bot's first
+# container after boot breaks. A seccomp allowlist tight enough to matter is
+# unmaintainable for a general dev agent (gradle/node/python/podman). The
+# containment here is Unix DAC plus the ACL model in the claude_user role, not a
+# syscall jail.
 exec "$HOME/.local/bin/claude" "$@"

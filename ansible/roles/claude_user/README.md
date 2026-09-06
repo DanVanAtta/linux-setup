@@ -66,6 +66,13 @@ than by an in-process sandbox it can disable itself.
   a `docker`→`podman` shim in the bot's `~/.local/bin` so scripts calling `docker`
   just work. Rootless adds no new authority — the bot could already run arbitrary
   code as `claude`; this only lets it do so in containers within that same box.
+- **Resource ceilings (anti-runaway).** `/etc/security/limits.d/claude.conf`
+  caps the bot user's `nproc` and `nofile` via `pam_limits`, which `sudo`'s PAM
+  session stack applies to the `sudo -u claude` launch. This is a safety net so
+  a wedged or runaway bot (fork storm, fd leak) can't exhaust the box and take
+  the human's session with it — not a syscall sandbox. `nproc` is kept generous
+  because `RLIMIT_NPROC` counts threads, and a parallel JVM build spawns
+  thousands; tune the `claude_user_limit_*` vars to the heaviest build run here.
 - **GitHub identity of its own.** The bot has a separate GitHub account
   (`DanVanAtta[Bot]`), never the human's. Its API token is stored
   ansible-vault-encrypted in `vars/main.yml` and deployed to the bot's home two
@@ -110,6 +117,32 @@ than by an in-process sandbox it can disable itself.
   form; a build that genuinely requires them is where this boundary stops. Bind
   mounts also see container-`root`-written files as an unprivileged mapped uid, so
   a container writing into `~/work` leaves files owned by a subuid, not `claude`.
+
+## Hardening knobs deliberately not set
+
+Two kernel-level controls that look like obvious wins are deliberately left off,
+because both were tested against this setup and rejected. Documented here so a
+future hardening pass doesn't re-enable them and quietly break the bot.
+
+- **`no_new_privs`** (eg: launching under `setpriv --no-new-privs`). It neuters
+  every SUID binary in the process tree — including the SUID `newuidmap` /
+  `newgidmap` that rootless Podman uses to establish its subuid mapping on a
+  *cold* start (before a pause process holds the user namespace). Confirmed
+  empirically: an isolated `newuidmap` writing the subuid range fails under nnp
+  with `write to uid_map failed: Operation not permitted`, while it succeeds
+  without it. Net effect would be the bot's first container after every boot
+  breaking. The warm path (`setns` into an existing userns) survives nnp, which
+  makes the breakage intermittent and easy to misattribute — hence this note.
+- **A seccomp syscall filter.** A filter tight enough to add real defense is
+  unmaintainable for a general-purpose dev agent that legitimately runs gradle,
+  node, python, and Podman; a loose one adds little. `ptrace_scope=1` and
+  `apparmor_restrict_unprivileged_userns=1` (both on by default here) already
+  cover the highest-value cases — the bot can't ptrace other users' processes,
+  and can't hand-roll a user namespace outside the sanctioned SUID helpers.
+
+The containment that *is* enforced is Unix DAC (the isolated `claude` uid, no
+sudo, no capabilities), the POSIX-ACL access model above, rootless-only Podman,
+and the resource ceilings — not an in-process syscall jail.
 
 ## Usage
 

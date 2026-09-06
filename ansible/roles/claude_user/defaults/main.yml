@@ -4,6 +4,15 @@ claude_user_name: claude
 claude_user_home: "/home/{{ claude_user_name }}"
 claude_user_model: claude-opus-4-8
 
+# Resource ceilings for the bot user (see the "Bound the bot user's resource
+# limits" task). A safety net against a runaway/wedged bot exhausting the box
+# and dragging the human's session down with it — not a tight sandbox. Keep
+# nproc generous: RLIMIT_NPROC counts threads on Linux and a parallel JVM build
+# spawns thousands, so a low cap breaks real builds. Tune to the heaviest
+# workload run here; the machine's uncapped baseline is far higher (nproc ~248k).
+claude_user_limit_nproc: 16384
+claude_user_limit_nofile: 65536
+
 # The primary (human) user whose files the bot is granted narrow access to.
 # Defaults to whoever runs the playbook (set in system-setup.yml).
 claude_user_primary: "{{ user }}"

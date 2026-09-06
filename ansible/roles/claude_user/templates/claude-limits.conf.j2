@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Resource ceilings for the '{{ claude_user_name }}' bot user, applied via
+# pam_limits — which sudo's PAM session stack (/etc/pam.d/sudo) honours, so a
+# `sudo -u {{ claude_user_name }}` launch inherits them. A safety net against a
+# runaway or wedged bot starving the machine and taking the human's session
+# down with it; it is not a tight sandbox. RLIMIT_NPROC counts threads, not
+# just processes, on Linux — a parallel JVM build (eg: triplea's gradle test
+# forks) spins up thousands — so nproc stays generous; too low and real builds
+# die with "unable to create native thread".
+{{ claude_user_name }}  soft  nproc   {{ claude_user_limit_nproc }}
+{{ claude_user_name }}  hard  nproc   {{ claude_user_limit_nproc }}
+{{ claude_user_name }}  soft  nofile  {{ claude_user_limit_nofile }}
+{{ claude_user_name }}  hard  nofile  {{ claude_user_limit_nofile }}
