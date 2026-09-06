@@ -42,6 +42,14 @@
     # clipboard it previews — the "something landed on the clipboard" cue.
     - {option: clipboard_notification_lines, value: "3"}
 
+- name: Ensure autostart directory exists
+  file:
+    path: "{{ user_home }}/.config/autostart"
+    state: directory
+    mode: "0755"
+    owner: "{{ user }}"
+    group: "{{ group }}"
+
 - name: Autostart CopyQ at login
   template:
     src: copyq-autostart.desktop.j2
