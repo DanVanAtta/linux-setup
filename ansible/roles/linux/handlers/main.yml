@@ -5,7 +5,7 @@
   ansible.builtin.service:
     state: started
     enabled: true
-    name: snapdw
+    name: snapd
 
 - name: Reload_sysctl
   when: not ansible_check_mode
