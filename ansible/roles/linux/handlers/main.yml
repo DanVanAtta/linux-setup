@@ -5,3 +5,8 @@
     state: started
     enabled: true
     name: snapdw
+
+- name: reload_sysctl
+  when: not ansible_check_mode
+  become: true
+  ansible.builtin.command: sysctl --system

@@ -96,11 +96,14 @@
         name: ufw
         enabled: true
     - name: Disable kernel address visibility, disallowed to all users including root (kptr_restrict = 2)
-      ansible.builtin.replace:
-        path: /etc/sysctl.d/10-kernel-hardening.conf
-        regexp: '(kernel\.kptr_restrict = ).*'
-        replace: '\g<1>2'
       become: true
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/10-kernel-hardening.conf
+        content: "kernel.kptr_restrict = 2\n"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: reload_sysctl
 
     - name: Disallow SSH password login
       ansible.builtin.replace:
