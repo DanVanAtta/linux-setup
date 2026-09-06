@@ -1,3 +1,5 @@
-- name: update_grub
+---
+- name: Update_grub
   ansible.builtin.command: update-grub
   become: true
+  changed_when: true

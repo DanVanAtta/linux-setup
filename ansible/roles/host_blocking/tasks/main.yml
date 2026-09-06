@@ -1,28 +1,32 @@
-- name: ensure git is installed
+---
+- name: Ensure git is installed
   become: true
-  package:
+  ansible.builtin.package:
     name: git
     state: present
 
-- name: clone or pull StevenBlack hosts repo
-  git:
+- name: Clone or pull StevenBlack hosts repo
+  ansible.builtin.git:
     repo: https://github.com/StevenBlack/hosts.git
     dest: "{{ user_home }}/.stevenblack-hosts"
     version: master
-    update: yes
+    update: true
     depth: 1
-  register: git_result
+  register: host_blocking_git_result
 
-- name: get hostname
-  command: hostname
-  register: hostname_output
+- name: Get hostname
+  ansible.builtin.command: hostname
+  register: host_blocking_hostname_output
   changed_when: false
 
-- name: write /etc/hosts from repo with local hostname prepended
+# The write must follow the repo pull in-line (it consumes the freshly pulled
+# hosts file), so this stays a change-gated task rather than a deferred handler.
+- name: Write /etc/hosts from repo with local hostname prepended
   become: true
-  template:
+  ansible.builtin.template:
     src: stevenblack_hosts.j2
     dest: /etc/hosts
+    mode: "0644"
   vars:
-    local_hostname: "{{ hostname_output.stdout }}"
-  when: git_result.changed
+    local_hostname: "{{ host_blocking_hostname_output.stdout }}"
+  when: host_blocking_git_result.changed  # noqa: no-handler

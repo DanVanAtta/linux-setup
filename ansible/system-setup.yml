@@ -1,4 +1,6 @@
-- hosts: localhost
+---
+- name: Provision developer desktop  # noqa: role-name[path]
+  hosts: localhost
   vars:
     user: "{{ ansible_facts['user_id'] }}"
     group: "{{ ansible_facts['user_id'] }}"
@@ -6,6 +8,8 @@
   roles:
     - docker
     - dot_files
+    # git sub-roles are intentionally grouped under 'roles/git/' (see the
+    # play-level 'noqa: role-name[path]' above, which the path-based names trip)
     - git/gh_command
     - git/local_config
     - git/git_tools
@@ -14,6 +18,6 @@
     - clipboard
     - grub
     - intellij
-    - {name: host_blocking, tags: host_blocking}
+    - { role: host_blocking, tags: host_blocking }
     - linux
-    - {name: claude_user, tags: claude_user}
+    - { role: claude_user, tags: claude_user }

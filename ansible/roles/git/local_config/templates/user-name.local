@@ -1,3 +1,3 @@
 [user]
-email = {{ git_user_email_input.user_input }}
-name = {{ git_user_name_input.user_input }}
+email = {{ local_config_git_user_email_input.user_input }}
+name = {{ local_config_git_user_name_input.user_input }}

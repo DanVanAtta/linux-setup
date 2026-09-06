@@ -1,219 +1,244 @@
-- name: install git and global config file
+---
+- name: Install git and global config file
   when: not ansible_check_mode
   block:
-    - name: install Git and GPG keyring tools
+    - name: Install Git and GPG keyring tools
       become: true
-      package:
+      ansible.builtin.package:
         state: present
         name:
           - git
           - libsecret-tools
           - gnupg-utils
-    - name: deploy .gitconfig file
-      template:
+    - name: Deploy .gitconfig file
+      ansible.builtin.template:
         src: gitconfig
         dest: "{{ ansible_facts['env']['HOME'] }}/.gitconfig"
-        mode: 0644
+        mode: "0644"
         owner: "{{ user }}"
         group: "{{ group }}"
 
-- name: deploy local configurations
+- name: Deploy local configurations
   block:
-    - name: ensure git (additional) config directory exists
-      file:
+    - name: Ensure git (additional) config directory exists
+      ansible.builtin.file:
         state: directory
-        path: "{{ git_local_config_dir }}"
+        path: "{{ local_config_dir }}"
         mode: "0755"
         owner: "{{ user }}"
         group: "{{ group }}"
 
-    - name: query for git config user.name
-      shell: git config user.name
-      register: git_user_name
+    # git_config module only reads a single scope; the command reads the merged
+    # effective config the user actually sees, which is what these checks need.
+    - name: Query for git config user.name
+      ansible.builtin.command: git config user.name  # noqa: command-instead-of-module
+      register: local_config_git_user_name
       failed_when: false
       changed_when: false
 
-    - name: configure local user
-      when: not git_user_name.stdout
+    - name: Configure local user
+      when: not local_config_git_user_name.stdout
       block:
         - name: Prompt for git user name
           ansible.builtin.pause:
             prompt: "Enter your desired git user name"
-          register: git_user_name_input
+          register: local_config_git_user_name_input
 
         - name: Prompt for git user email
           ansible.builtin.pause:
             prompt: "Enter your desired git email"
-          register: git_user_email_input
+          register: local_config_git_user_email_input
 
-        - name: deploy git config for username and email
-          template:
+        - name: Deploy git config for username and email
+          ansible.builtin.template:
             src: user-name.local
-            dest: "{{ git_user_name_config }}"
+            dest: "{{ local_config_user_name_config }}"
             mode: "0640"
             owner: "{{ user }}"
             group: "{{ group }}"
 
-    - name: check if GPG signing key is already configured in git
-      shell: git config user.signingkey
-      register: git_signing_key
+    - name: Check if GPG signing key is already configured in git
+      ansible.builtin.command: git config user.signingkey  # noqa: command-instead-of-module
+      register: local_config_git_signing_key
       failed_when: false
       changed_when: false
 
-    - name: configure GPG signing key
-      when: not git_signing_key.stdout
+    - name: Configure GPG signing key
+      when: not local_config_git_signing_key.stdout
       block:
-        - name: register git author name
-          shell: git config user.name
-          register: git_author_name
+        - name: Register git author name
+          ansible.builtin.command: git config user.name  # noqa: command-instead-of-module
+          register: local_config_git_author_name
+          changed_when: false
 
-        - name: register git author email
-          shell: git config user.email
-          register: git_email
+        - name: Register git author email
+          ansible.builtin.command: git config user.email  # noqa: command-instead-of-module
+          register: local_config_git_email
+          changed_when: false
 
-        - name: generate GPG key
+        - name: Generate GPG key
           block:
-            - name: render GPG batch keygen file
-              template:
+            - name: Render GPG batch keygen file
+              ansible.builtin.template:
                 src: gpg-gen-key-batch.j2
                 dest: /tmp/gpg-gen-key-batch
                 mode: "0600"
                 owner: "{{ user }}"
                 group: "{{ group }}"
 
-            - name: generate GPG key via batch file
-              shell: gpg --batch --gen-key /tmp/gpg-gen-key-batch
-              register: gpg_gen_result
+            - name: Generate GPG key via batch file
+              ansible.builtin.command: gpg --batch --gen-key /tmp/gpg-gen-key-batch
+              register: local_config_gpg_gen_result
+              changed_when: true
 
-            - name: remove batch file
-              file:
+            - name: Remove batch file
+              ansible.builtin.file:
                 path: /tmp/gpg-gen-key-batch
                 state: absent
 
-            - name: retrieve new GPG key ID
-              shell: >
-                gpg --list-secret-keys --keyid-format LONG "{{ git_email.stdout }}"
-                | grep sec
-                | awk '{print $2}'
-                | cut -d'/' -f2
-                | sort
-                | head -1
-              register: gpg_key_id_result
+            - name: Retrieve new GPG key ID
+              ansible.builtin.shell:
+                cmd: |
+                  set -o pipefail
+                  gpg --list-secret-keys --keyid-format LONG "{{ local_config_git_email.stdout }}" \
+                    | grep sec \
+                    | awk '{print $2}' \
+                    | cut -d'/' -f2 \
+                    | sort \
+                    | head -1
+                executable: /bin/bash
+              register: local_config_gpg_key_id_result
+              changed_when: false
 
-            - name: set GPG key ID fact
-              set_fact:
-                gpg_key_id: "{{ gpg_key_id_result.stdout | trim }}"
+            - name: Set GPG key ID fact
+              ansible.builtin.set_fact:
+                local_config_gpg_key_id: "{{ local_config_gpg_key_id_result.stdout | trim }}"
 
-            - name: configure gpg-agent for long cache TTL
-              template:
+            - name: Configure gpg-agent for long cache TTL
+              ansible.builtin.template:
                 src: gpg-agent.conf.j2
                 dest: "{{ ansible_facts['env']['HOME'] }}/.gnupg/gpg-agent.conf"
                 mode: "0600"
                 owner: "{{ user }}"
                 group: "{{ group }}"
 
-            - name: reload gpg-agent
-              shell: gpg-connect-agent reloadagent /bye
-              ignore_errors: true
+            - name: Reload gpg-agent
+              ansible.builtin.command: gpg-connect-agent reloadagent /bye
+              register: local_config_gpg_agent_reload
+              failed_when: false
+              changed_when: false
 
-            - name: deploy git config snippet for GPG signing key
-              template:
+            - name: Deploy git config snippet for GPG signing key
+              ansible.builtin.template:
                 src: gpg-key.local
-                dest: "{{ git_gpg_key_config }}"
+                dest: "{{ local_config_gpg_key_config }}"
                 mode: "0640"
                 owner: "{{ user }}"
                 group: "{{ group }}"
 
-
-    - name: clean up legacy gpg-preload-passphrase service (no longer needed)
+    - name: Clean up legacy gpg-preload-passphrase service (no longer needed)
       block:
-        - name: disable legacy preload service if present
-          shell: systemctl --user disable --now gpg-preload-passphrase.service 2>/dev/null || true
+        # systemd module errors when the unit is already absent; this best-effort
+        # cleanup must tolerate that, so it stays a shell with `|| true`.
+        - name: Disable legacy preload service if present
+          ansible.builtin.shell: systemctl --user disable --now gpg-preload-passphrase.service 2>/dev/null || true  # noqa: command-instead-of-module
           changed_when: false
 
-        - name: remove legacy preload service file
-          file:
+        - name: Remove legacy preload service file
+          ansible.builtin.file:
             path: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/gpg-preload-passphrase.service"
             state: absent
 
-        - name: remove legacy preload script
-          file:
+        - name: Remove legacy preload script
+          ansible.builtin.file:
             path: "{{ ansible_facts['env']['HOME'] }}/.local/bin/gpg-preload-passphrase.sh"
             state: absent
 
-        - name: reload systemd user daemon after cleanup
-          shell: systemctl --user daemon-reload
+        - name: Reload systemd user daemon after cleanup
+          ansible.builtin.command: systemctl --user daemon-reload  # noqa: command-instead-of-module
+          register: local_config_systemd_reload
+          failed_when: false
           changed_when: false
-          ignore_errors: true
 
 - name: Upload GPG public key to GitHub (idempotent)
   block:
     - name: Get configured GPG signing key from git
-      shell: git config user.signingkey
-      register: configured_signing_key
+      ansible.builtin.command: git config user.signingkey  # noqa: command-instead-of-module
+      register: local_config_configured_signing_key
       failed_when: false
       changed_when: false
 
     - name: Verify GPG public key is exportable
-      shell: gpg --armor --export "{{ configured_signing_key.stdout | trim }}" | grep -c 'BEGIN PGP PUBLIC KEY'
-      register: gpg_key_exportable
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          gpg --armor --export "{{ local_config_configured_signing_key.stdout | trim }}" | grep -c 'BEGIN PGP PUBLIC KEY'
+        executable: /bin/bash
+      register: local_config_gpg_key_exportable
       failed_when: false
       changed_when: false
-      when: configured_signing_key.stdout | trim != ""
+      when: local_config_configured_signing_key.stdout | trim != ""
 
     - name: Delete GPG key config file if GPG key is missing from keyring
-      file:
-        path: "{{ git_gpg_key_config }}"
+      ansible.builtin.file:
+        path: "{{ local_config_gpg_key_config }}"
         state: absent
       when:
-        - configured_signing_key.stdout | trim != ""
-        - gpg_key_exportable.stdout | default('0') | trim == '0'
+        - local_config_configured_signing_key.stdout | trim != ""
+        - local_config_gpg_key_exportable.stdout | default('0') | trim == '0'
 
     - name: Re-check git signing key after potential unset
-      shell: git config user.signingkey
-      register: configured_signing_key
+      ansible.builtin.command: git config user.signingkey  # noqa: command-instead-of-module
+      register: local_config_configured_signing_key
       failed_when: false
       changed_when: false
 
     - name: Get git user email for GPG export
-      shell: git config user.email
-      register: configured_git_email
+      ansible.builtin.command: git config user.email  # noqa: command-instead-of-module
+      register: local_config_configured_git_email
       failed_when: false
       changed_when: false
-      when: configured_signing_key.stdout | trim != ""
+      when: local_config_configured_signing_key.stdout | trim != ""
 
     - name: Check if GPG key is already on GitHub
-      shell: gh gpg-key list --json keyId -q '.[].keyId' | grep -Fi "{{ configured_signing_key.stdout | trim }}" | head -c1
-      register: gpg_key_on_github
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          gh gpg-key list --json keyId -q '.[].keyId' | grep -Fi "{{ local_config_configured_signing_key.stdout | trim }}" | head -c1
+        executable: /bin/bash
+      register: local_config_gpg_key_on_github
       failed_when: false
       changed_when: false
-      when: configured_signing_key.stdout | trim != ""
+      when: local_config_configured_signing_key.stdout | trim != ""
 
     - name: Upload GPG public key to GitHub via gh CLI
-      shell: gpg --armor --export "{{ configured_git_email.stdout | trim }}" | gh gpg-key add -
-      register: gh_gpg_upload
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          gpg --armor --export "{{ local_config_configured_git_email.stdout | trim }}" | gh gpg-key add -
+        executable: /bin/bash
+      register: local_config_gh_gpg_upload
+      changed_when: local_config_gh_gpg_upload.rc == 0
       failed_when:
-        - gh_gpg_upload.rc != 0
-        - "'already exist' not in gh_gpg_upload.stderr"
+        - local_config_gh_gpg_upload.rc != 0
+        - "'already exist' not in local_config_gh_gpg_upload.stderr"
       when:
-        - configured_signing_key.stdout | trim != ""
-        - configured_git_email.stdout | default('') | trim != ""
-        - gpg_key_on_github.stdout | default('') == ""
+        - local_config_configured_signing_key.stdout | trim != ""
+        - local_config_configured_git_email.stdout | default('') | trim != ""
+        - local_config_gpg_key_on_github.stdout | default('') == ""
 
-- name: deploy GitHub HTTPS credential helper script
-  template:
+- name: Deploy GitHub HTTPS credential helper script
+  ansible.builtin.template:
     src: github-credential-helper.sh
-    dest: "{{ git_local_config_dir }}/github-credential-helper.sh"
+    dest: "{{ local_config_dir }}/github-credential-helper.sh"
     mode: "0750"
     owner: "{{ user }}"
     group: "{{ group }}"
 
-- name: deploy GitHub HTTPS credential helper config
-  template:
+- name: Deploy GitHub HTTPS credential helper config
+  ansible.builtin.template:
     src: github-credential.local.config
-    dest: "{{ git_github_credential_config }}"
+    dest: "{{ local_config_github_credential_config }}"
     mode: "0640"
     owner: "{{ user }}"
     group: "{{ group }}"
-
-

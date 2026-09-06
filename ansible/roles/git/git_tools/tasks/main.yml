@@ -1,21 +1,22 @@
 ---
-
 - name: Ensure ~/work directory exists
-  file:
+  ansible.builtin.file:
     path: "{{ user_home }}/work"
     state: directory
     owner: "{{ user }}"
     group: "{{ group }}"
     mode: "0755"
 
+# Tracks the repo's default branch on first clone; `update: false` keeps it
+# pinned thereafter, so tracking latest here is intentional.
 - name: Clone git-tools repo
-  git:
+  ansible.builtin.git:  # noqa: latest[git]
     repo: "https://github.com/DanVanAtta/git-tools"
     dest: "{{ user_home }}/work/git-tools"
     update: false
 
 - name: Add git-tools to PATH in ~/.bashrc
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "{{ user_home }}/.bashrc"
     line: "export PATH=\"$PATH:{{ user_home }}/work/git-tools\""
     state: present

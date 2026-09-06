@@ -1,5 +1,5 @@
 [user]
-	signingkey = {{ gpg_key_id }}
+	signingkey = {{ local_config_gpg_key_id }}
 [commit]
 	gpgsign = true
 [tag]

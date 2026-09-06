@@ -1,10 +1,13 @@
 ---
+# Tracks upstream's default branch on first clone; `update: false` keeps it
+# pinned thereafter, so tracking latest here is intentional.
 - name: Clone scm_breeze repository
-  git:
+  ansible.builtin.git:  # noqa: latest[git]
     repo: git@github.com:scmbreeze/scm_breeze.git
     dest: "~/.scm_breeze"
-    clone: yes
-    update: no
+    clone: true
+    update: false
 
 - name: Install scm_breeze
-  command: ~/.scm_breeze/install.sh
+  ansible.builtin.command: ~/.scm_breeze/install.sh
+  changed_when: true

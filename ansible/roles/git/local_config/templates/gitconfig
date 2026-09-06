@@ -1,9 +1,9 @@
 [include]
-        path = {{ git_user_name_config }}
+        path = {{ local_config_user_name_config }}
 [includeIf "gitdir:~/"]
-        path = {{ git_gpg_key_config }}
+        path = {{ local_config_gpg_key_config }}
 [include]
-        path = {{ git_github_credential_config }}
+        path = {{ local_config_github_credential_config }}
 [blame]
 	ignoreRevsFile = .git-blame-ignore-revs
 [branch]

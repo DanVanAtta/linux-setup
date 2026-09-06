@@ -1,6 +1,7 @@
+---
 - name: Install GitHub CLI (gh)
   become: true
-  apt:
+  ansible.builtin.apt:
     name: gh
     state: present
     update_cache: true

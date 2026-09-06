@@ -1,12 +1,14 @@
-- name: snapd_running
+---
+- name: Snapd_running
   when: not ansible_check_mode
   become: true
-  service:
+  ansible.builtin.service:
     state: started
     enabled: true
     name: snapdw
 
-- name: reload_sysctl
+- name: Reload_sysctl
   when: not ansible_check_mode
   become: true
   ansible.builtin.command: sysctl --system
+  changed_when: true

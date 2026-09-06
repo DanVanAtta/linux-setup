@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-commit gate: a commit only succeeds when `just verify` passes (playbook
+# syntax-check + ansible-lint). Activated by `just install-hooks`, which points
+# core.hooksPath here. Bypass a single commit with `git commit --no-verify`.
+set -euo pipefail
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "pre-commit: 'just' not found — run the setup steps in README.md, then retry." >&2
+    exit 1
+fi
+
+exec just verify

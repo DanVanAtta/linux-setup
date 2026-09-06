@@ -1,7 +1,8 @@
+---
 - name: Install CopyQ clipboard manager
   become: true
   when: not ansible_check_mode
-  apt:
+  ansible.builtin.apt:
     state: present
     name:
       # CopyQ watches the Wayland clipboard through 'ext-data-control-v1', which Mutter
@@ -12,7 +13,7 @@
       - wl-clipboard
 
 - name: Ensure CopyQ config directory exists
-  file:
+  ansible.builtin.file:
     path: "{{ user_home }}/.config/copyq"
     state: directory
     mode: "0755"
@@ -34,16 +35,16 @@
     group: "{{ group }}"
     no_extra_spaces: true
   loop:
-    - {option: check_clipboard, value: "true"}
-    - {option: check_selection, value: "false"}
-    - {option: copy_clipboard, value: "false"}
-    - {option: copy_selection, value: "false"}
+    - { option: check_clipboard, value: "true" }
+    - { option: check_selection, value: "false" }
+    - { option: copy_clipboard, value: "false" }
+    - { option: copy_selection, value: "false" }
     # Non-zero enables the on-copy notification; the count is how many lines of the new
     # clipboard it previews — the "something landed on the clipboard" cue.
-    - {option: clipboard_notification_lines, value: "3"}
+    - { option: clipboard_notification_lines, value: "3" }
 
 - name: Ensure autostart directory exists
-  file:
+  ansible.builtin.file:
     path: "{{ user_home }}/.config/autostart"
     state: directory
     mode: "0755"
@@ -51,7 +52,7 @@
     group: "{{ group }}"
 
 - name: Autostart CopyQ at login
-  template:
+  ansible.builtin.template:
     src: copyq-autostart.desktop.j2
     dest: "{{ user_home }}/.config/autostart/copyq.desktop"
     mode: "0644"

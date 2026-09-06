@@ -6,7 +6,7 @@
 # the file gets sourced.
 
 - name: Deploy dot files to home folder
-  copy:
+  ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
     backup: true
@@ -20,7 +20,7 @@
       dest: "{{ user_home }}/.bash_aliases"
 
 - name: Ensure .bashrc sources .pat_tokens
-  blockinfile:
+  ansible.builtin.blockinfile:
     path: "{{ user_home }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED BLOCK"
     block: |

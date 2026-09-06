@@ -21,20 +21,26 @@ setup:
       --with jmespath
     uv tool install --upgrade ansible-lint
     uv tool install --upgrade ansible-navigator
+    just install-hooks
 
 # Install required Ansible collections.
 galaxy: setup
     ansible-galaxy collection install -r ansible/requirements.yml
 
-# Lint all roles + playbook (no sudo; still red from pre-existing legacy debt).
+# The gate — "this is good": no-sudo validation of the whole config. A
+# pre-commit hook (see `install-hooks`) runs this, so a commit only lands when
+# it passes. Syntax-checks the playbook, then lints every role + playbook
+# (green under ansible-lint's `production` profile). Needs collections present;
+# run `just galaxy` once. The check-mode dry run is separate (`just diff`).
 verify:
-    ansible-lint ansible/
-
-# No-sudo work check: syntax-check the playbook, then lint the claude_user role.
-check:
     ansible-playbook --inventory "localhost," --connection local \
       --syntax-check ansible/system-setup.yml
-    ansible-lint ansible/roles/claude_user
+    ansible-lint ansible/
+
+# Point git at the tracked hooks dir so the pre-commit gate is active. Idempotent;
+# also run by `setup`, so a fresh clone gets it after `just setup`.
+install-hooks:
+    git config core.hooksPath .githooks
 
 # Check-mode dry run against this machine (needs sudo; run `sudo -v` first).
 diff: galaxy

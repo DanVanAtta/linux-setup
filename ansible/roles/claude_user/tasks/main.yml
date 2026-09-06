@@ -275,10 +275,10 @@
     name: "{{ item.name }}"
     value: "{{ item.value }}"
   loop:
-    - {name: user.name, value: "{{ claude_user_git_name }}"}
-    - {name: user.email, value: "{{ claude_user_git_email }}"}
+    - { name: user.name, value: "{{ claude_user_git_name }}" }
+    - { name: user.email, value: "{{ claude_user_git_email }}" }
     # git reads the bot's own token from ~/.git-credentials (deployed below).
-    - {name: credential.helper, value: store}
+    - { name: credential.helper, value: store }
 
 - name: Let the bot run git in the human's shared repos (safe.directory)
   # The ~/work checkout and its clones are owned by the human, but git here runs
@@ -319,10 +319,10 @@
     name: "{{ item.name }}"
     value: "{{ item.value }}"
   loop:
-    - {name: gpg.format, value: ssh}
-    - {name: user.signingkey, value: "{{ claude_user_git_signing_key }}.pub"}
-    - {name: commit.gpgsign, value: "true"}
-    - {name: gpg.ssh.allowedSignersFile, value: "{{ claude_user_home }}/.ssh/allowed_signers"}
+    - { name: gpg.format, value: ssh }
+    - { name: user.signingkey, value: "{{ claude_user_git_signing_key }}.pub" }
+    - { name: commit.gpgsign, value: "true" }
+    - { name: gpg.ssh.allowedSignersFile, value: "{{ claude_user_home }}/.ssh/allowed_signers" }
 
 - name: Read the signing public key for the allowed-signers file
   become: true
@@ -488,9 +488,9 @@
   ansible.builtin.package:
     name:
       - podman
-      - uidmap          # newuidmap/newgidmap — set up the user-namespace mapping
-      - fuse-overlayfs  # rootless overlay storage driver
-      - slirp4netns     # rootless container networking
+      - uidmap # newuidmap/newgidmap — set up the user-namespace mapping
+      - fuse-overlayfs # rootless overlay storage driver
+      - slirp4netns # rootless container networking
     state: present
 
 - name: Reserve a subordinate uid/gid range for the bot's user namespace

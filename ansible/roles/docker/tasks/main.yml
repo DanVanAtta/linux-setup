@@ -1,7 +1,7 @@
-
-- name: make sure older versions of docker are removed
+---
+- name: Make sure older versions of docker are removed
   become: true
-  package:
+  ansible.builtin.package:
     state: absent
     name:
       - docker
@@ -38,9 +38,9 @@
     - /etc/apt/sources.list.d/docker.list
     - /etc/apt/keyrings/docker.gpg
 
-- name: install docker packages
+- name: Install docker packages
   become: true
-  package:
+  ansible.builtin.package:
     update_cache: true
     name:
       - docker-ce
@@ -48,15 +48,15 @@
       - containerd.io
       - docker-compose-plugin
 
-- name: create docker group
+- name: Create docker group
   become: true
-  group:
+  ansible.builtin.group:
     name: docker
     state: present
 
-- name: sudoless docker commands
+- name: Sudoless docker commands
   become: true
-  user:
+  ansible.builtin.user:
     name: "{{ lookup('ansible.builtin.env', 'USER') }}"
     groups: docker
-    append: yes
+    append: true

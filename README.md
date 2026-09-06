@@ -33,9 +33,11 @@ ansible-core version. Both also read the ansible-vault password from the
 `MY_ANSIBLE_VAULT` environment variable (exported via `~/.bashrc`) so vaulted
 vars decrypt.
 
-To check the config without touching the system (no sudo, no vault):
-`just verify` runs ansible-lint, and `just check` is a full no-sudo dry run
-(syntax-check + lint).
+To check the config without touching the system (no sudo, no vault): `just
+verify` syntax-checks the playbook and runs ansible-lint. It's the commit
+gate — a git pre-commit hook runs it, so a commit only lands when it passes
+(`just install-hooks` wires the hook; `just setup` does too). The check-mode
+dry run against the machine is separate: `just diff` (needs sudo + vault).
 
 
 ## Install List
