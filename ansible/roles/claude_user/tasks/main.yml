@@ -201,6 +201,70 @@
     group: "{{ claude_user_name }}"
     mode: "0755"
 
+# --- Ansible toolchain for the bot -------------------------------------------
+# The bot works in this linux-setup repo, so it needs its own ansible toolchain;
+# the isolation ACLs wall it off from the primary user's uv tools under the human
+# home. Mirrors the justfile 'setup' recipe (pipx -> uv -> uv tool install) into
+# the bot's own ~/.local — the one PATH the launch wrapper prepends. Install-once
+# via creates guards, not the recipe's --upgrade, so `make apply` stays
+# idempotent; the human still drives upgrades through `just setup`.
+
+- name: Ensure pipx is available to bootstrap the bot's uv
+  become: true
+  ansible.builtin.package:
+    name: pipx
+    state: present
+
+- name: Install uv for the bot via pipx
+  become: true
+  become_user: "{{ claude_user_name }}"
+  community.general.pipx:
+    name: uv
+    state: present
+
+- name: Install the bot's ansible-core with its playbook runtime libs
+  # The same libs the 'setup' recipe pins: linode_api4/passlib/netaddr/jmespath
+  # are runtime deps a real playbook run pulls in, kept for parity so the bot can
+  # run anything short of the sudo `apply` the human owns.
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: >-
+      {{ claude_user_home }}/.local/bin/uv tool install ansible-core
+      --with ansible --with linode_api4 --with passlib
+      --with netaddr --with jmespath
+    creates: "{{ claude_user_home }}/.local/bin/ansible-playbook"
+
+- name: Install the bot's ansible-lint
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: "{{ claude_user_home }}/.local/bin/uv tool install ansible-lint"
+    creates: "{{ claude_user_home }}/.local/bin/ansible-lint"
+
+- name: Install the bot's ansible-navigator
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: "{{ claude_user_home }}/.local/bin/uv tool install ansible-navigator"
+    creates: "{{ claude_user_home }}/.local/bin/ansible-navigator"
+
+- name: Install the bot's required ansible collections
+  # Mirrors the 'galaxy' recipe: syntax-check and lint of this repo resolve
+  # community.general FQCNs, so the bot needs the collection present to run
+  # `just check`/`verify` in its own home.
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: not ansible_check_mode
+  ansible.builtin.command:
+    cmd: >-
+      {{ claude_user_home }}/.local/bin/ansible-galaxy collection install
+      -r {{ playbook_dir }}/requirements.yml
+    creates: "{{ claude_user_home }}/.ansible/collections/ansible_collections/community/general"
+
 # --- Bot git identity --------------------------------------------------------
 
 - name: Set the bot's own git identity and credential store
