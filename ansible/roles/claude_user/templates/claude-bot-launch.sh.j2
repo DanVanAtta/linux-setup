@@ -18,6 +18,16 @@ if [ -f "$HOME/.pat_tokens" ]; then
   set +a
 fi
 
+# Hand-placed secrets the repo deliberately does not manage — eg
+# LINODE_ACCESS_TOKEN for the dynamic inventory. The claude_user role only
+# ensures this file exists (0600); its contents are yours to set and survive a
+# re-apply. Sourced after '.pat_tokens' so a local entry wins on any overlap.
+if [ -f "$HOME/.pat_tokens.local" ]; then
+  set -a
+  . "$HOME/.pat_tokens.local"
+  set +a
+fi
+
 # X clipboard access for paste. sudo's env_reset drops DISPLAY/XAUTHORITY, and
 # the bot's own uid cannot read the human's Xwayland cookie in its 0700 runtime
 # dir — so paste reads an empty clipboard. The autostart hook copies that cookie

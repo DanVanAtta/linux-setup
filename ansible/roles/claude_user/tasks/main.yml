@@ -390,12 +390,11 @@
 
 # --- Bot GitHub token (vaulted -> deployed to the bot's home) ----------------
 
-- name: Deploy the bot's API tokens as an environment file
-  # Mirrors the primary user's ~/.pat_tokens pattern: a 0600 file the launch
-  # wrapper sources (set -a) so a headless bot's shells see the tokens with no
-  # dotfile read — `gh` gets GH_TOKEN/GITHUB_TOKEN, and the dynamic Linode
-  # inventory gets LINODE_ACCESS_TOKEN to resolve production IPs. Both vaulted in
-  # the repo (vars/main.yml), written in cleartext only here, into the bot's home.
+- name: Deploy the bot's GitHub token as an environment file
+  # Mirrors the primary user's ~/.pat_tokens pattern: a 0600 file the bot's
+  # shell sources so `gh` sees GH_TOKEN/GITHUB_TOKEN. The token is vaulted in
+  # the repo (vars/main.yml) and only written in cleartext here, into the bot's
+  # own home.
   become: true
   no_log: true
   ansible.builtin.copy:
@@ -406,7 +405,23 @@
     content: |
       export GH_TOKEN={{ claude_user_gh_token }}
       export GITHUB_TOKEN={{ claude_user_gh_token }}
-      export LINODE_ACCESS_TOKEN={{ claude_user_linode_token }}
+
+- name: Ensure the bot's unmanaged local-secrets file exists
+  # Wiring only — infra guarantees the file is present with 0600 perms and the
+  # launch wrapper sources it, but never writes its contents. Secrets kept out of
+  # the repo on purpose — eg LINODE_ACCESS_TOKEN for the dynamic inventory — are
+  # hand-placed here as `export NAME=value` lines and are the human's to manage
+  # (and to re-drop on a new box). force: false so a re-apply never clobbers a
+  # file that already holds real secrets.
+  become: true
+  become_user: "{{ claude_user_name }}"
+  ansible.builtin.copy:
+    dest: "{{ claude_user_home }}/.pat_tokens.local"
+    owner: "{{ claude_user_name }}"
+    group: "{{ claude_user_name }}"
+    mode: "0600"
+    content: ""
+    force: false
 
 - name: Source the token env file from the bot's .bashrc
   become: true
