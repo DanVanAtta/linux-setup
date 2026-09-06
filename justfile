@@ -58,7 +58,7 @@ apply: galaxy
       --diff \
       ansible/system-setup.yml
 
-# Move hardcoded secrets in ~/.pat_tokens into the GNOME keyring, rewriting each back to
-# its `$(secret-tool lookup ...)` load line. Handles both adding and rotating a secret.
-migrate-secrets:
-    python3 ansible/migrate-secrets.py
+# Print the `secret-tool store` commands to keyring-back hardcoded ~/.pat_tokens secrets
+# (run them in your own login session); `--rewrite` then swaps stored lines to load form.
+migrate-secrets *args:
+    python3 ansible/migrate-secrets.py {{args}}
