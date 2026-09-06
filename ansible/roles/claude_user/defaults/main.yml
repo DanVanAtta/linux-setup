@@ -14,9 +14,10 @@ claude_user_limit_nproc: 16384
 claude_user_limit_nofile: 65536
 
 # The primary (human) user whose files the bot is granted narrow access to.
-# Defaults to whoever runs the playbook (set in system-setup.yml).
-claude_user_primary: "{{ user }}"
-claude_user_primary_home: "{{ user_home }}"
+# Pinned to the human (set in system-setup.yml), not the runner, so a run made as
+# the bot still resolves these grants to the human's home rather than its own.
+claude_user_primary: "{{ primary_user }}"
+claude_user_primary_home: "{{ primary_home }}"
 claude_user_work_dir: "{{ user_home }}/work"
 # Read-only opt-in: the bot may read pasted/referenced screenshots but never
 # writes here (unlike the read-write ~/work grant).

@@ -39,3 +39,7 @@ downgrade or global `skip_list`. Current, deliberate exceptions:
   effective config (the `git_config` module reads a single scope); the
   legacy `systemctl --user` cleanup must tolerate an already-absent unit,
   which the `systemd` module does not.
+- `risky-file-permissions` — the `git/git_tools` "Ensure ~/work directory
+  exists" task deliberately leaves `mode` unmanaged: a chmod there recalculates
+  the POSIX ACL mask the `claude_user` role sets on `~/work`, stripping the
+  bot's and human's write bit down to `r-x`.

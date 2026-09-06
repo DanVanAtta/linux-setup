@@ -1,3 +1,4 @@
 ---
 collections:
   - name: community.general
+  - name: ansible.posix  # ansible.posix.acl — declarative ~/work ACLs (claude_user)

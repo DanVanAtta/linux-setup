@@ -1,11 +1,16 @@
 ---
-- name: Ensure ~/work directory exists
+# become + a pinned owner so this asserts state rather than tracking the runner:
+# root can correct drift back to the human, so a stray run as the 'claude' bot
+# (whose ~/work is a symlink here) can no longer leave the tree bot-owned. No
+# 'mode' — chmod would recalculate the POSIX ACL mask the claude_user role sets,
+# silently stripping the bot's and human's write bit down to r-x.
+- name: Ensure ~/work directory exists, owned by the human  # noqa: risky-file-permissions
+  become: true
   ansible.builtin.file:
-    path: "{{ user_home }}/work"
+    path: "{{ primary_home }}/work"
     state: directory
-    owner: "{{ user }}"
-    group: "{{ group }}"
-    mode: "0755"
+    owner: "{{ primary_user }}"
+    group: "{{ primary_group }}"
 
 # Tracks the repo's default branch on first clone; `update: false` keeps it
 # pinned thereafter, so tracking latest here is intentional.

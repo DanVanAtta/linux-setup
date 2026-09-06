@@ -53,28 +53,18 @@
     group: "{{ claude_user_primary }}"
     mode: "0750"
 
-- name: Read current ACLs on the shared paths
-  become: true
-  when: not ansible_check_mode
-  ansible.builtin.command:
-    cmd: "getfacl -pc {{ item }}"
-  changed_when: false
-  register: claude_user_acls
-  loop:
-    - "{{ claude_user_primary_home }}"
-    - "{{ claude_user_work_dir }}"
-    - "{{ claude_user_screenshots_dir }}"
-
 - name: Grant the bot traverse-only access into the primary home
-  # -x lets the bot cd through {{ claude_user_primary_home }} to reach ~/work. It
+  # 'x' lets the bot cd through {{ claude_user_primary_home }} to reach ~/work. It
   # cannot list the home, but traverse alone still lets it read any world-readable
   # file there by exact path — the home's 0750 mode does not protect them. The
   # next task strips that exposure.
   become: true
-  when: not ansible_check_mode and ('user:' + claude_user_name + ':') not in (claude_user_acls.results[0].stdout | default(''))
-  ansible.builtin.command:
-    cmd: "setfacl -m u:{{ claude_user_name }}:x {{ claude_user_primary_home }}"
-  changed_when: true
+  ansible.posix.acl:
+    path: "{{ claude_user_primary_home }}"
+    entity: "{{ claude_user_name }}"
+    etype: user
+    permissions: x
+    state: present
 
 - name: Strip world access from the primary home so traverse exposes nothing
   # Remove all "other" access from every top-level entry except ~/work (the one
@@ -89,40 +79,46 @@
     \( -type f -o -type d \) -exec chmod o-rwx {} +
   changed_when: false
 
-- name: Grant the bot (and keep the primary user) rwX on ~/work, recursively
+# Declarative ACLs, re-asserted every run (no getfacl-and-gate) so they self-heal
+# — eg after a mode change elsewhere recalculates the mask down. Each task sets
+# both the access ACL (files that exist now) and the default ACL (inheritance for
+# what either side creates later), keeping ~/work writable both directions without
+# a shared group or setgid churn. Uppercase X grants dir traverse without marking
+# plain files executable; recalculate_mask defaults to letting setfacl widen the
+# mask to cover the new entry.
+- name: Grant the bot and primary user rwX on ~/work — access + default, recursively
   become: true
-  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[1].stdout | default(''))
-  ansible.builtin.command:
-    cmd: "setfacl -R -m u:{{ claude_user_name }}:rwX,u:{{ claude_user_primary }}:rwX {{ claude_user_work_dir }}"
-  changed_when: true
+  ansible.posix.acl:
+    path: "{{ claude_user_work_dir }}"
+    entity: "{{ item.entity }}"
+    etype: user
+    permissions: rwX
+    default: "{{ item.default }}"
+    state: present
+    recursive: true
+  loop:
+    - { entity: "{{ claude_user_name }}", default: false }
+    - { entity: "{{ claude_user_name }}", default: true }
+    - { entity: "{{ claude_user_primary }}", default: false }
+    - { entity: "{{ claude_user_primary }}", default: true }
+  loop_control:
+    label: "{{ item.entity }} (default={{ item.default }})"
 
-- name: Set default ACLs so new files under ~/work inherit that shared access
-  # Keeps files editable both directions: bot-created files stay writable by the
-  # primary user, and vice versa, without a shared group or setgid churn.
-  become: true
-  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[1].stdout | default(''))
-  ansible.builtin.command:
-    cmd: "setfacl -R -d -m u:{{ claude_user_name }}:rwX,u:{{ claude_user_primary }}:rwX {{ claude_user_work_dir }}"
-  changed_when: true
-
-- name: Grant the bot read-only access to ~/Screenshots, recursively
+- name: Grant the bot read-only access to ~/Screenshots — access + default, recursively
   # Read-only (rX), unlike the rwX on ~/work: the bot reads screenshots the human
-  # pastes or references but never writes here. X adds traverse on the dir (and
-  # any subdirs) without making plain image files executable.
+  # drops here but never writes.
   become: true
-  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[2].stdout | default(''))
-  ansible.builtin.command:
-    cmd: "setfacl -R -m u:{{ claude_user_name }}:rX {{ claude_user_screenshots_dir }}"
-  changed_when: true
-
-- name: Set default ACLs so new screenshots inherit the bot's read access
-  # A new screenshot dropped in later is readable by the bot without a re-run;
-  # the default entry applies to files created after this point.
-  become: true
-  when: not ansible_check_mode and ('default:user:' + claude_user_name + ':') not in (claude_user_acls.results[2].stdout | default(''))
-  ansible.builtin.command:
-    cmd: "setfacl -R -d -m u:{{ claude_user_name }}:rX {{ claude_user_screenshots_dir }}"
-  changed_when: true
+  ansible.posix.acl:
+    path: "{{ claude_user_screenshots_dir }}"
+    entity: "{{ claude_user_name }}"
+    etype: user
+    permissions: rX
+    default: "{{ item }}"
+    state: present
+    recursive: true
+  loop: [false, true]
+  loop_control:
+    label: "default={{ item }}"
 
 - name: Give the bot a ~/work that resolves to the shared checkout
   # The bot's HOME is {{ claude_user_home }}, but the shared tree lives under the

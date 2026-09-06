@@ -5,6 +5,13 @@
     user: "{{ ansible_facts['user_id'] }}"
     group: "{{ ansible_facts['user_id'] }}"
     user_home: "{{ ansible_facts['env']['HOME'] }}"
+    # The desktop's human owner, pinned rather than runner-derived. ~/work and the
+    # bot's ACL grants must resolve to the human even on a run made as the 'claude'
+    # bot; keyed off the runner, ownership flips to whoever ran the play. See
+    # git/git_tools and the claude_user role.
+    primary_user: dan
+    primary_group: dan
+    primary_home: "/home/{{ primary_user }}"
   roles:
     - docker
     - dot_files
