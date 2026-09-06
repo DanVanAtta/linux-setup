@@ -222,9 +222,10 @@
 # The bot works in this linux-setup repo, so it needs its own ansible toolchain;
 # the isolation ACLs wall it off from the primary user's uv tools under the human
 # home. Mirrors the justfile 'setup' recipe (pipx -> uv -> uv tool install) into
-# the bot's own ~/.local — the one PATH the launch wrapper prepends. Install-once
-# via creates guards, not the recipe's --upgrade, so `make apply` stays
-# idempotent; the human still drives upgrades through `just setup`.
+# the bot's own ~/.local — the one PATH the launch wrapper prepends. Each install
+# is guarded to run once — a creates check for the single-binary tools, an import
+# probe for ansible-core (see below) — so `make apply` stays idempotent; the human
+# still drives routine version bumps through `just setup`.
 
 - name: Ensure pipx is available to bootstrap the bot's uv
   become: true
@@ -239,19 +240,43 @@
     name: uv
     state: present
 
-- name: Install the bot's ansible-core with its playbook runtime libs
-  # The same libs the 'setup' recipe pins: linode_api4/passlib/netaddr/jmespath
-  # are runtime deps a real playbook run pulls in, kept for parity so the bot can
-  # run anything short of the sudo `apply` the human owns.
+# ansible-core plus the runtime libs the 'setup' recipe pins
+# (linode_api4/passlib/netaddr/jmespath); linode_api4 backs the dynamic Linode
+# inventory the bot uses to resolve production IPs. A bare `uv tool install`
+# short-circuits once ansible-core exists and will not add a --with lib listed
+# later, so a tool env built before linode_api4 was added never picks it up.
+# Probe the import and (re)install only when a lib is missing: fires on a fresh
+# machine and to repair that drift, but stays a no-op on a healthy env — so
+# `make apply` is idempotent and routine version bumps remain the human's call
+# via `just setup`.
+- name: Check whether the bot's ansible env has its inventory runtime libs
   become: true
   become_user: "{{ claude_user_name }}"
   when: not ansible_check_mode
   ansible.builtin.command:
+    argv:
+      - "{{ claude_user_home }}/.local/bin/uv"
+      - tool
+      - run
+      - --from
+      - ansible-core
+      - python
+      - -c
+      - import linode_api4
+  register: claude_user_ansible_libs
+  changed_when: false
+  failed_when: false
+
+- name: Install the bot's ansible-core with its playbook runtime libs
+  become: true
+  become_user: "{{ claude_user_name }}"
+  when: not ansible_check_mode and (claude_user_ansible_libs.rc | default(1)) != 0
+  ansible.builtin.command:
     cmd: >-
-      {{ claude_user_home }}/.local/bin/uv tool install ansible-core
+      {{ claude_user_home }}/.local/bin/uv tool install --upgrade ansible-core
       --with ansible --with linode_api4 --with passlib
       --with netaddr --with jmespath
-    creates: "{{ claude_user_home }}/.local/bin/ansible-playbook"
+  changed_when: true
 
 - name: Install the bot's ansible-lint
   become: true
@@ -365,11 +390,12 @@
 
 # --- Bot GitHub token (vaulted -> deployed to the bot's home) ----------------
 
-- name: Deploy the bot's GitHub token as an environment file
-  # Mirrors the primary user's ~/.pat_tokens pattern: a 0600 file the bot's
-  # shell sources so `gh` sees GH_TOKEN/GITHUB_TOKEN. The token is vaulted in
-  # the repo (vars/main.yml) and only written in cleartext here, into the bot's
-  # own home.
+- name: Deploy the bot's API tokens as an environment file
+  # Mirrors the primary user's ~/.pat_tokens pattern: a 0600 file the launch
+  # wrapper sources (set -a) so a headless bot's shells see the tokens with no
+  # dotfile read — `gh` gets GH_TOKEN/GITHUB_TOKEN, and the dynamic Linode
+  # inventory gets LINODE_ACCESS_TOKEN to resolve production IPs. Both vaulted in
+  # the repo (vars/main.yml), written in cleartext only here, into the bot's home.
   become: true
   no_log: true
   ansible.builtin.copy:
@@ -380,6 +406,7 @@
     content: |
       export GH_TOKEN={{ claude_user_gh_token }}
       export GITHUB_TOKEN={{ claude_user_gh_token }}
+      export LINODE_ACCESS_TOKEN={{ claude_user_linode_token }}
 
 - name: Source the token env file from the bot's .bashrc
   become: true

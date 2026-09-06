@@ -11,3 +11,11 @@ claude_user_gh_token: !vault |
   6462323931653166660a396236346632653138366330643736363536386138363665313365343331
   36356562663539666263336136616138663436333934343365613937316463323236376366353266
   6432336130666531316334386266363536633536323361396665
+
+# Vaulted Linode API token for the bot's dynamic inventory (resolving prod IPs).
+# PLACEHOLDER — replace the line below with a vaulted value before `just apply`.
+# Encrypt (in your own login shell, MY_ANSIBLE_VAULT set) with:
+#   printf %s "$LINODE_ACCESS_TOKEN" | ansible-vault encrypt_string \
+#     --vault-password-file ansible/vault-pass.sh --stdin-name claude_user_linode_token
+# then paste the emitted `claude_user_linode_token: !vault |` block over this line.
+claude_user_linode_token: "REPLACE_WITH_VAULTED_LINODE_TOKEN"
